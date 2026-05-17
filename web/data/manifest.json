@@ -1,0 +1,80 @@
+{
+  "generated_at": "2026-05-17T17:35:19.640588+00:00",
+  "schema_version": 1,
+  "strategies": [
+    {
+      "slug": "rotation_rank_1",
+      "label": "Bursa Momentum Rotation (winner)",
+      "family": "rotation",
+      "tier": "F",
+      "oos_sharpe": 0.29254732444968323
+    },
+    {
+      "slug": "clenow_som_rank_9",
+      "label": "Clenow Stocks-on-the-Move (lookback 60, regime-on)",
+      "family": "clenow_som",
+      "tier": "F",
+      "oos_sharpe": 0.9237810082419812
+    }
+  ],
+  "variants_count": 102,
+  "folds_count": 2965,
+  "search_log_rows": 2965,
+  "kill_triggers": [
+    {
+      "id": "K1",
+      "name": "Sharpe regression",
+      "trigger": "Live Sharpe over any rolling 6 months falls below 0.0",
+      "action": "Pause new entries; review whether the OOS Sharpe estimate was over-confident."
+    },
+    {
+      "id": "K2",
+      "name": "Drawdown breach",
+      "trigger": "Live drawdown exceeds the worst OOS DD by more than 25%",
+      "action": "Full stop; suspend capital allocation pending diagnostic."
+    },
+    {
+      "id": "K3",
+      "name": "Cost-model breach",
+      "trigger": "Realised cost-per-leg exceeds the model's prediction by more than 50%",
+      "action": "Investigate broker-fee changes, ADV decay, or model bug."
+    },
+    {
+      "id": "K4",
+      "name": "Universe shrinkage",
+      "trigger": "Eligible universe falls below 50 names on any rebal date",
+      "action": "Pause until liquidity returns; do NOT relax the floor."
+    },
+    {
+      "id": "K5",
+      "name": "Calendar / data feed anomaly",
+      "trigger": "Two consecutive rebal dates where signal disagreed with adjudicator manual check",
+      "action": "Full stop; data-feed audit."
+    },
+    {
+      "id": "K6",
+      "name": "Operational fault",
+      "trigger": "Any order rejected by the broker on settle/cash/limits grounds for two days running",
+      "action": "Pause; investigate operational pipeline."
+    }
+  ],
+  "iron": {
+    "holdout_window": [
+      "2020-01-01",
+      "2022-02-15"
+    ],
+    "holdout_touch_count": 1,
+    "no_live_trading": true,
+    "data_panel": [
+      "2007-01-03",
+      "2022-02-15"
+    ],
+    "data_source": "Sentieo/FactSet XKLS, survivorship-free"
+  },
+  "families": [
+    "clenow_som",
+    "momentum",
+    "reversal",
+    "rotation"
+  ]
+}
