@@ -1,0 +1,21 @@
+# Data
+*.csv
+data/parquet/
+data/raw/
+
+# Results / scratch
+results/
+.tmp/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/

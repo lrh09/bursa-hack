@@ -1,0 +1,29 @@
+[project]
+name = "bursahack"
+version = "0.1.0"
+description = "Bursa Malaysia historical backtest harness (strategy-agnostic, walk-forward, MPlus-fee-aware)"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2",
+    "pyarrow>=15",
+    "numpy>=1.26",
+    "matplotlib>=3.10.9",
+    "reportlab>=4.5.1",
+    "pymupdf>=1.27.2.3",
+]
+
+[project.optional-dependencies]
+notebook = ["jupyter", "matplotlib", "seaborn"]
+dev = ["pytest", "ruff"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]

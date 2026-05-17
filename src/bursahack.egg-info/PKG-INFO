@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: bursahack
+Version: 0.1.0
+Summary: Bursa Malaysia historical backtest harness (strategy-agnostic, walk-forward, MPlus-fee-aware)
+Requires-Python: >=3.11
+Requires-Dist: pandas>=2.2
+Requires-Dist: pyarrow>=15
+Requires-Dist: numpy>=1.26
+Requires-Dist: matplotlib>=3.10.9
+Requires-Dist: reportlab>=4.5.1
+Requires-Dist: pymupdf>=1.27.2.3
+Provides-Extra: notebook
+Requires-Dist: jupyter; extra == "notebook"
+Requires-Dist: matplotlib; extra == "notebook"
+Requires-Dist: seaborn; extra == "notebook"
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
