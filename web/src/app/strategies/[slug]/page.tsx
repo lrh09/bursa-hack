@@ -186,6 +186,84 @@ export default async function StrategyPage({ params, searchParams }: PageProps) 
               </CardContent>
             </Card>
           )}
+          {strategy.is_stability && (
+            <Card>
+              <CardContent className="py-4 space-y-3">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h2 className="font-heading text-base">In-sample param stability</h2>
+                  <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                    {strategy.is_stability.method}
+                  </span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Iron rule honoured: <span className="tabular">{strategy.is_stability.iron_rule}</span>.
+                  Each numeric param perturbed ±15% independently; Sharpe recomputed on the IS slice.
+                  Threshold: max %-drop &gt; −25% to pass.
+                </p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {Object.entries(strategy.is_stability.variants).map(([key, v]) => (
+                    <div key={key} className="rounded-md border border-border p-3 space-y-2">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="font-medium text-sm">{v.label}</p>
+                        <span
+                          className={
+                            "text-[11px] uppercase tracking-wider tabular font-semibold " +
+                            (v.passed ? "text-emerald-700" : "text-red-700")
+                          }
+                        >
+                          {v.passed ? "PASS" : "FAIL"}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 text-xs">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Base Sharpe (IS)</p>
+                          <p className="tabular text-sm font-medium">{v.base_sharpe.toFixed(3)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Worst %-drop</p>
+                          <p className="tabular text-sm font-medium">
+                            {(v.max_pct_drop * 100).toFixed(2)}%
+                          </p>
+                        </div>
+                      </div>
+                      <details className="text-xs">
+                        <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                          {v.perturbations.length} perturbations
+                        </summary>
+                        <table className="w-full mt-2 tabular">
+                          <thead>
+                            <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                              <th className="text-left font-medium pb-1">Param</th>
+                              <th className="text-right font-medium pb-1">Value</th>
+                              <th className="text-right font-medium pb-1">Sharpe</th>
+                              <th className="text-right font-medium pb-1">Δ%</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {v.perturbations.map((p, i) => (
+                              <tr key={i} className="border-t border-border/40">
+                                <td className="py-1">{p.param}</td>
+                                <td className="text-right py-1">{p.value}</td>
+                                <td className="text-right py-1">{p.sharpe.toFixed(4)}</td>
+                                <td
+                                  className={
+                                    "text-right py-1 " +
+                                    (p.delta_pct < 0 ? "text-red-700" : "text-emerald-700")
+                                  }
+                                >
+                                  {(p.delta_pct * 100).toFixed(2)}%
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </details>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="costs" className="space-y-5">

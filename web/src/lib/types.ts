@@ -88,6 +88,32 @@ export interface HoldoutVerdict {
   results_by_capital: Record<string, HoldoutCapital>;
 }
 
+export interface StabilityPerturbation {
+  param: string;
+  value: number;
+  sharpe: number;
+  delta_pct: number;
+}
+
+export interface StabilityVariant {
+  label: string;
+  base_params: Record<string, unknown>;
+  is_window: [string, string];
+  base_sharpe: number;
+  max_pct_drop: number;
+  passed: boolean;
+  threshold_pct: number;
+  perturbations: StabilityPerturbation[];
+  wall_seconds: number;
+}
+
+export interface IsStability {
+  method: string;
+  iron_rule: string;
+  perturbed_keys: string[];
+  variants: Record<string, StabilityVariant>;
+}
+
 export interface Strategy {
   slug: string;
   label: string;
@@ -109,6 +135,7 @@ export interface Strategy {
   holdout_verdict?: HoldoutVerdict;
   trade_count?: number;
   has_trades?: boolean;
+  is_stability?: IsStability;
 }
 
 export interface EquityCurve {

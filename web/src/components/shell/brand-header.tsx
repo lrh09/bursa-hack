@@ -50,13 +50,13 @@ export async function BrandHeader() {
             <CalendarClock className="size-3.5" aria-hidden />
             <span className="tabular">{generatedDate}</span>
           </span>
-          <a
+          <Link
             href="/reports/"
             className="hidden md:inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-md text-white/85 hover:text-white hover:bg-white/8 transition-colors"
           >
             <FileBarChart2 className="size-3.5" aria-hidden />
             Reports
-          </a>
+          </Link>
           <ThemeToggle />
         </div>
       </div>

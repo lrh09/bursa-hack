@@ -579,8 +579,9 @@ def main() -> None:
         scorecards_row=rotation_row,
         summary_row=summary_by_hash.get(rotation_row["params_hash"]),
         equity_csvs={
-            "350k": RESULTS / "rotation_winner_equity.csv",
-            # 100k / 1M sweeps for rotation not regenerated; fall back to 350k only
+            "100k": RESULTS / "rotation_winner_equity_100k.csv",
+            "350k": RESULTS / "rotation_winner_equity_350k.csv",
+            "1M":   RESULTS / "rotation_winner_equity_1M.csv",
         },
         trades_csv=RESULTS / "rotation_winner_trades.csv",
         scorecard_md=RESULTS / "SCORECARD_rotation.md",
@@ -620,6 +621,19 @@ def main() -> None:
             "likely flip. Tier F today, the closest of any variant to passing."
         ),
     )
+
+    # Attach IS-only param-stability summary (closes the gap noted in
+    # project_bursahack_2026_05_18: "Param stability not run on this variant").
+    # Iron rule: 2020-2022 holdout not re-touched; evaluation window = IS 2008-2019.
+    stab_path = RESULTS / "clenow_is_stability.json"
+    if stab_path.exists():
+        stab = json.loads(stab_path.read_text(encoding="utf-8"))
+        clenow_bundle["is_stability"] = stab
+
+    # Also drop the raw stability JSON next to the report bundles for
+    # deep-linking / debugging.
+    if stab_path.exists():
+        shutil.copy2(stab_path, OUT / "clenow_is_stability.json")
 
     # Write strategy bundles. Separate full equity into equity/ files to keep
     # the strategy bundle responsive on dial-up.
