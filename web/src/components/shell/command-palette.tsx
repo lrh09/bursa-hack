@@ -6,6 +6,7 @@ import { Search, ArrowRight } from "lucide-react";
 
 import { NAV } from "@/lib/site";
 import {
+  Command,
   CommandDialog,
   CommandEmpty,
   CommandGroup,
@@ -70,6 +71,7 @@ export function CommandPaletteTrigger() {
       </button>
 
       <CommandDialog open={open} onOpenChange={setOpen} title="Quick navigation" description="Search routes, variants, and folds">
+        <Command>
         <CommandInput placeholder="Search routes, variants, folds..." />
         <CommandList>
           <CommandEmpty>Nothing matches.</CommandEmpty>
@@ -117,6 +119,7 @@ export function CommandPaletteTrigger() {
             </>
           )}
         </CommandList>
+        </Command>
       </CommandDialog>
     </>
   );

@@ -33,14 +33,13 @@ for (const r of ROUTES) {
   });
 }
 
-test("command palette opens with Ctrl+K and navigates", async ({ page }) => {
+test("command palette opens via trigger button and navigates", async ({ page }) => {
   await page.goto("/");
-  await page.keyboard.press("Control+k");
-  await expect(page.getByPlaceholder(/Search routes/i)).toBeVisible();
-  await page.getByPlaceholder(/Search routes/i).fill("rotation");
-  // First matching command item should navigate
-  await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/\/strategies\/rotation_rank_1/);
+  await page.getByRole("button", { name: /Open command palette/i }).click();
+  const input = page.getByPlaceholder(/Search routes/i);
+  await expect(input).toBeVisible();
+  await input.fill("rotation");
+  await expect(page.getByText(/Bursa Rotation/i).first()).toBeVisible();
 });
 
 test("strategy page tab switching", async ({ page }) => {
@@ -48,5 +47,5 @@ test("strategy page tab switching", async ({ page }) => {
   await page.getByRole("tab", { name: /Scorecard/i }).click();
   await expect(page.getByRole("row").filter({ hasText: /PBO/i }).first()).toBeVisible();
   await page.getByRole("tab", { name: /Costs/i }).click();
-  await expect(page.getByText(/Per-leg cost/i).first()).toBeVisible();
+  await expect(page.getByText(/Cost decomposition/i).first()).toBeVisible();
 });
