@@ -26,6 +26,13 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+import bursahack.signals  # noqa: F401 -- populates Strategy.__subclasses__()
+from bursahack.signals.registry import (
+    all_strategies,
+    group_variants_by_strategy,
+    strategy_id_for,
+)
+
 REPO = Path(__file__).resolve().parents[1]
 RESULTS = REPO / "results"
 OUT = REPO / "web" / "data"
@@ -550,6 +557,243 @@ def build_folds(search_log: list[dict]) -> list[dict]:
     return out
 
 
+# --------------------------------------------------- strategy-bank build --
+
+def _five_num_summary(values: list[tuple[float, str]]) -> dict:
+    """Five-number summary + best_hash for a list of (value, params_hash)."""
+    vals = sorted([v for v, _ in values if v is not None])
+    by_hash = sorted(values, key=lambda t: (t[0] if t[0] is not None else -1e18))
+    if not vals:
+        return {"min": None, "p25": None, "median": None, "p75": None, "max": None, "best_hash": None}
+
+    def q(p: float) -> float:
+        idx = int(round(p * (len(vals) - 1)))
+        return float(vals[idx])
+
+    return {
+        "min": float(vals[0]),
+        "p25": q(0.25),
+        "median": q(0.50),
+        "p75": q(0.75),
+        "max": float(vals[-1]),
+        "best_hash": by_hash[-1][1],
+    }
+
+
+def _pick_headline(variants: list[dict], rule: str) -> tuple[str, str]:
+    """Return (params_hash, reason) of the headline variant per HEADLINE_RULE.
+
+    Only one rule shape is supported today: "max wf_sharpe" plus optional
+    constraints "s.t. cov<=X, slip_drag<=Y" (comma-separated). Anything more
+    exotic falls back to plain "max wf_sharpe".
+    """
+    base_rule = rule.strip()
+    constraints = []
+    if "s.t." in base_rule:
+        head, tail = base_rule.split("s.t.", 1)
+        base_rule = head.strip()
+        for clause in tail.split(","):
+            clause = clause.strip()
+            for op in ("<=", ">=", "<", ">", "="):
+                if op in clause:
+                    key, val = clause.split(op, 1)
+                    constraints.append((key.strip(), op, float(val.strip())))
+                    break
+
+    candidates = list(variants)
+    for key, op, val in constraints:
+        if op == "<=":
+            candidates = [v for v in candidates if v.get(key) is not None and v[key] <= val]
+        elif op == ">=":
+            candidates = [v for v in candidates if v.get(key) is not None and v[key] >= val]
+        elif op == "<":
+            candidates = [v for v in candidates if v.get(key) is not None and v[key] < val]
+        elif op == ">":
+            candidates = [v for v in candidates if v.get(key) is not None and v[key] > val]
+        elif op == "=":
+            candidates = [v for v in candidates if v.get(key) == val]
+    if not candidates:
+        candidates = list(variants)  # fall back to unconstrained
+
+    metric_key = base_rule.replace("max ", "").strip() or "wf_sharpe"
+    best = max(candidates, key=lambda v: v.get(metric_key) or -1e18)
+    return best["params_hash"], rule
+
+
+def _tier_rank(t: str | None) -> int:
+    return {"A": 0, "B": 1, "C": 2, "D": 3, "E": 4, "F": 5}.get(t or "F", 6)
+
+
+def build_strategy_bank(
+    final_scorecards: list[dict],
+    summary_rows: list[dict],
+) -> tuple[list[dict], list[dict], dict[str, str]]:
+    """Build per-strategy bundles + manifest entries + hash->id lookup.
+
+    Returns (bundle_list, manifest_entries, hash_to_strategy_id).
+    """
+    sc_by_hash = {r["params_hash"]: r for r in final_scorecards}
+    # Decorate summary rows with parsed params
+    rows: list[dict] = []
+    for r in summary_rows:
+        try:
+            params = json.loads(r.get("params") or "{}")
+        except json.JSONDecodeError:
+            params = {}
+        rows.append({**r, "params": params})
+
+    shape_keys_for: dict[str, tuple[str, ...]] = {}
+    family_class: dict[str, type] = {}
+    for cls in all_strategies():
+        # `name` is the family slug on each Strategy subclass; it's a dataclass
+        # field with a default, so it's a class attribute.
+        family = getattr(cls, "name", None)
+        if family is None or not isinstance(family, str):
+            # Pull default from the dataclass field as a fallback
+            family = cls.__dataclass_fields__["name"].default
+        family_class[family] = cls
+        shape_keys_for[family] = cls.SHAPE_KEYS
+
+    grouped = group_variants_by_strategy(rows, shape_keys_for)
+
+    bundles: list[dict] = []
+    manifest_entries: list[dict] = []
+    hash_to_sid: dict[str, str] = {}
+
+    for sid, variants in grouped.items():
+        family = variants[0]["strategy"]
+        cls = family_class[family]
+        shape = {k: variants[0]["params"][k] for k in cls.SHAPE_KEYS}
+
+        # Decorate variants with the union of summary + scorecard fields we want
+        inline_variants: list[dict] = []
+        agg_inputs: dict[str, list[tuple[float, str]]] = {
+            "wf_sharpe": [], "oos_sharpe": [], "max_dd": [], "cov": [],
+            "cagr_oos": [], "slip_drag": [], "order_mult": [],
+        }
+        for r in variants:
+            h = r["params_hash"]
+            hash_to_sid[h] = sid
+            sc = sc_by_hash.get(h, {})
+
+            def _num(d: dict, k: str) -> float | None:
+                v = d.get(k)
+                if v is None or v == "":
+                    return None
+                try:
+                    return float(v)
+                except (ValueError, TypeError):
+                    return None
+
+            v_row = {
+                "params_hash": h,
+                "params": r["params"],
+                "wf_sharpe":  _num(sc, "wf_sharpe") if sc else _num(r, "sharpe_mean"),
+                "oos_sharpe": _num(sc, "oos_sharpe"),
+                "cov":        _num(sc, "cov"),
+                "max_dd":     _num(sc, "max_dd"),
+                "cagr_oos":   _num(sc, "cagr_oos"),
+                "slip_drag":  _num(sc, "slip_drag"),
+                "order_mult": _num(sc, "order_mult"),
+                "monthly_hit": _num(sc, "monthly_hit"),
+                "tier":       sc.get("tier") if sc else None,
+                "n_pass":     int(sc["n_pass"]) if sc.get("n_pass") else None,
+                "n_eval":     int(sc["n_eval"]) if sc.get("n_eval") else None,
+            }
+            inline_variants.append(v_row)
+            for metric in agg_inputs:
+                val = v_row.get(metric)
+                if val is not None:
+                    agg_inputs[metric].append((val, h))
+
+        head_hash, head_reason = _pick_headline(inline_variants, cls.HEADLINE_RULE)
+        for v in inline_variants:
+            v["headline"] = (v["params_hash"] == head_hash)
+
+        agg_metrics = {k: _five_num_summary(v) for k, v in agg_inputs.items()}
+
+        # display_name: append shape tokens in human form
+        shape_human = []
+        for k in cls.SHAPE_KEYS:
+            val = shape[k]
+            if isinstance(val, bool):
+                if k == "use_regime":
+                    shape_human.append("regime on" if val else "regime off")
+                else:
+                    shape_human.append(f"{k}={val}")
+            elif k == "rebal_freq":
+                shape_human.append({"W": "weekly", "M": "monthly", "Q": "quarterly", "2W": "biweekly"}.get(str(val), str(val)))
+            else:
+                shape_human.append(f"{k}={val}")
+        display_name = cls.DISPLAY_NAME + (f" - {', '.join(shape_human)}" if shape_human else "")
+
+        # Auto-generated one-liner: ranges of CONT_KEYS + headline values
+        cont_ranges_bits = []
+        head_variant = next(v for v in inline_variants if v["headline"])
+        head_value_bits = []
+        for ck in cls.CONT_KEYS:
+            vals = sorted({v["params"].get(ck) for v in inline_variants if v["params"].get(ck) is not None})
+            if not vals:
+                continue
+            if len(vals) == 1:
+                cont_ranges_bits.append(f"{ck}={vals[0]}")
+            else:
+                cont_ranges_bits.append(f"{ck}={vals[0]}-{vals[-1]}")
+            hv = head_variant["params"].get(ck)
+            if hv is not None:
+                head_value_bits.append(f"{ck}={hv}")
+        one_liner = f"{len(inline_variants)} variants. " + ", ".join(cont_ranges_bits)
+        if head_value_bits:
+            one_liner += ". Best: " + ", ".join(head_value_bits)
+
+        bundle = {
+            "strategy_id": sid,
+            "family": family,
+            "display_name": display_name,
+            "shape": shape,
+            "short_blurb": cls.SHORT_BLURB,
+            "definition_md": cls.DEFINITION_MD,
+            "references": list(cls.REFERENCES),
+            "source_file": cls.SOURCE_FILE,
+            "added": cls.ADDED,
+            "one_liner": one_liner,
+            "variant_count": len(inline_variants),
+            "headline_variant_hash": head_hash,
+            "headline_reason": head_reason,
+            "aggregate_metrics": agg_metrics,
+            "variants_inline": inline_variants,
+        }
+        bundles.append(bundle)
+
+        # Manifest summary
+        best_oos_summary = agg_metrics["oos_sharpe"]
+        best_tier = min(
+            (v["tier"] for v in inline_variants if v["tier"]),
+            key=_tier_rank,
+            default=None,
+        )
+        head_v = next(v for v in inline_variants if v["headline"])
+        manifest_entries.append({
+            "strategy_id": sid,
+            "family": family,
+            "display_name": display_name,
+            "best_oos_sharpe": best_oos_summary.get("max"),
+            "best_tier": best_tier,
+            "variant_count": len(inline_variants),
+            "headline_variant_hash": head_hash,
+            "headline_gates_passed": head_v.get("n_pass"),
+            "headline_gates_evaluated": head_v.get("n_eval"),
+        })
+
+    # Sort manifest entries by best_oos_sharpe desc (None last)
+    manifest_entries.sort(
+        key=lambda m: m["best_oos_sharpe"] if m["best_oos_sharpe"] is not None else -1e18,
+        reverse=True,
+    )
+
+    return bundles, manifest_entries, hash_to_sid
+
+
 # ---------------------------------------------------------------- main --
 
 def main() -> None:
@@ -656,6 +900,23 @@ def main() -> None:
                 trades = list(csv.DictReader(f))
             (OUT / "trades" / f"{slug}.json").write_text(json.dumps(trades))
 
+    # NEW: bank-style per-strategy bundles
+    bundles, manifest_strategy_entries, hash_to_sid = build_strategy_bank(
+        final_scorecards, summary_rows,
+    )
+
+    # Write each bundle to web/data/strategies/<strategy_id>.json
+    for bundle in bundles:
+        path = OUT / "strategies" / f"{bundle['strategy_id']}.json"
+        path.write_text(json.dumps(bundle), encoding="utf-8")
+
+    # Strategy aliases (legacy URL redirects)
+    aliases = {
+        "rotation_rank_1":   "rotation__rebal-M",
+        "clenow_som_rank_9": "clenow_som__regime-on__rebal-M",
+    }
+    (OUT / "strategy_aliases.json").write_text(json.dumps(aliases, indent=2), encoding="utf-8")
+
     # Variants
     variants, details = build_variants()
     (OUT / "search_summary.json").write_text(json.dumps(variants))
@@ -688,22 +949,8 @@ def main() -> None:
     manifest = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "schema_version": 1,
-        "strategies": [
-            {
-                "slug": rotation_bundle["slug"],
-                "label": rotation_bundle["label"],
-                "family": rotation_bundle["family"],
-                "tier": rotation_bundle["tier"],
-                "oos_sharpe": rotation_bundle["metrics"]["oos_sharpe"],
-            },
-            {
-                "slug": clenow_bundle["slug"],
-                "label": clenow_bundle["label"],
-                "family": clenow_bundle["family"],
-                "tier": clenow_bundle["tier"],
-                "oos_sharpe": clenow_bundle["metrics"]["oos_sharpe"],
-            },
-        ],
+        "strategies": manifest_strategy_entries,
+        "hash_to_strategy_id": hash_to_sid,
         "variants_count": len(variants),
         "folds_count": len(folds),
         "search_log_rows": len(search_log),
