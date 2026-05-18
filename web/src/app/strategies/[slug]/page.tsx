@@ -24,6 +24,7 @@ import { FoldTable } from "@/components/strategy/fold-table";
 import { RiskCards } from "@/components/strategy/risk-cards";
 import { TradeExplorer } from "@/components/strategy/trade-explorer";
 import { VariantExplorer } from "@/components/strategy/variant-explorer";
+import { ParamHeatmap } from "@/components/strategy/param-heatmap";
 import { ScorecardTable } from "@/components/scorecard/scorecard-table";
 import { DiagnosticsList } from "@/components/scorecard/diagnostics-list";
 import { KillTriggers } from "@/components/scorecard/kill-triggers";
@@ -94,6 +95,12 @@ function StrategyBankPage({
   selectedHash: string | null;
 }) {
   const head = bundle.variants_inline.find((v) => v.headline) ?? bundle.variants_inline[0];
+  const contKeys = Array.from(new Set(
+    bundle.variants_inline.flatMap((v) => Object.keys(v.params)),
+  )).filter((k) => {
+    const values = new Set(bundle.variants_inline.map((v) => v.params[k]));
+    return values.size >= 2 && [...values].every((x) => typeof x === "number");
+  });
   return (
     <div className="space-y-8 fade-rise">
       <header className="space-y-2 max-w-3xl">
@@ -112,8 +119,10 @@ function StrategyBankPage({
         <Kpi label="Headline tier" value={head?.tier ?? "—"} />
       </section>
 
-      {/* ParamHeatmap arrives in T10. */}
-      <VariantExplorer bundle={bundle} selectedHash={selectedHash} />
+      <div className="grid lg:grid-cols-[3fr_2fr] gap-5 items-start">
+        <VariantExplorer bundle={bundle} selectedHash={selectedHash} />
+        <ParamHeatmap variants={bundle.variants_inline} contKeys={contKeys} />
+      </div>
 
       <section className="prose prose-sm max-w-none">
         <pre className="whitespace-pre-wrap text-xs">{bundle.definition_md}</pre>
