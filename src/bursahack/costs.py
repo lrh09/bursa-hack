@@ -87,3 +87,108 @@ def cost_bps(notional: float, adv_20d: float,
         return 0.0
     _, _, one_leg = total_cost(notional, adv_20d, fee_cfg, slip_cfg)
     return 2.0 * one_leg / notional * 10_000.0
+
+
+# =============================================================================
+# Pluggable FeeSchedule (intraday platform extension, 2026-05-18)
+# =============================================================================
+#
+# The dataclass-based FeeConfig above is the *daily-resolution* cost model
+# kept intact for backward compat. The classes below are pydantic-backed
+# FeeSchedule variants the intraday platform plugs in (per-regime backtests
+# report under every listed FeeSchedule side by side).
+#
+# `MPlusRetailFee` delegates to the existing `fees()` function so the two
+# layers stay numerically identical on retail trades.
+
+from pydantic import BaseModel, ConfigDict, Field  # noqa: E402
+
+
+class FeeSchedule(BaseModel):
+    """Abstract base: pluggable cost regime for intraday backtests.
+
+    Each subclass implements `roundtrip_cost(notional_rm) -> float` returning
+    the per-trade round-trip cost in BPS (already x10000 / notional).
+    Slippage / market-impact is NOT modeled here; see `intraday.impact`.
+    Fees-only is intentional so the two effects compose cleanly.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    name: str = "abstract"
+
+    def roundtrip_cost(self, notional_rm: float) -> float:  # pragma: no cover - abstract
+        raise NotImplementedError
+
+
+class MPlusRetailFee(FeeSchedule):
+    """MPlus (Malacca Securities) retail schedule -- Bursa 2021 baseline.
+
+    Delegates to the existing `fees()` so the daily and intraday layers stay
+    numerically identical on this regime.
+    """
+
+    name: str = "mplus_retail"
+    brokerage_rate: float = 0.0005
+    brokerage_min: float = 8.0
+    sst_rate: float = 0.08
+    clearing_rate: float = 0.0003
+    clearing_cap: float = 1_000.0
+    stamp_rate: float = 0.0010
+    stamp_cap: float = 1_000.0
+
+    def _as_fee_config(self) -> FeeConfig:
+        return FeeConfig(
+            brokerage_rate=self.brokerage_rate,
+            brokerage_min=self.brokerage_min,
+            sst_rate=self.sst_rate,
+            clearing_rate=self.clearing_rate,
+            clearing_cap=self.clearing_cap,
+            stamp_rate=self.stamp_rate,
+            stamp_cap=self.stamp_cap,
+        )
+
+    def roundtrip_cost(self, notional_rm: float) -> float:
+        if notional_rm <= 0:
+            return 0.0
+        one_leg = fees(notional_rm, self._as_fee_config())
+        return 2.0 * one_leg / notional_rm * 10_000.0
+
+
+class InstitutionalFee(FeeSchedule):
+    """Flat 5 bps round-trip, no minimum. Standard insto desk simplification."""
+
+    name: str = "institutional"
+    roundtrip_bps: float = 5.0
+
+    def roundtrip_cost(self, notional_rm: float) -> float:
+        if notional_rm <= 0:
+            return 0.0
+        return self.roundtrip_bps
+
+
+class CustomFee(FeeSchedule):
+    """Fully explicit fee schedule (no defaults). Used for sensitivity tests."""
+
+    name: str = "custom"
+    brokerage_rate: float = Field(...)
+    brokerage_min: float = Field(...)
+    sst_rate: float = Field(...)
+    clearing_rate: float = Field(...)
+    clearing_cap: float = Field(...)
+    stamp_rate: float = Field(...)
+    stamp_cap: float = Field(...)
+
+    def roundtrip_cost(self, notional_rm: float) -> float:
+        if notional_rm <= 0:
+            return 0.0
+        cfg = FeeConfig(
+            brokerage_rate=self.brokerage_rate,
+            brokerage_min=self.brokerage_min,
+            sst_rate=self.sst_rate,
+            clearing_rate=self.clearing_rate,
+            clearing_cap=self.clearing_cap,
+            stamp_rate=self.stamp_rate,
+            stamp_cap=self.stamp_cap,
+        )
+        one_leg = fees(notional_rm, cfg)
+        return 2.0 * one_leg / notional_rm * 10_000.0
