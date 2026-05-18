@@ -13,12 +13,14 @@ interface Props {
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export function MonthlyHeatmap({ grid, height = 320, className }: Props) {
-  // Build z[year_idx][month_idx]
-  const years = grid.years;
-  const z: (number | null)[][] = years.map(() => Array(12).fill(null));
-  const text: (string)[][] = years.map(() => Array(12).fill(""));
+  // Most-recent year on top. Plotly's category axis renders the first array
+  // element at the bottom by default, so passing years ASCENDING (oldest first)
+  // puts the newest at the top without needing autorange:"reversed".
+  const yearsAsc = [...grid.years].sort((a, b) => a - b);
+  const z: (number | null)[][] = yearsAsc.map(() => Array(12).fill(null));
+  const text: (string)[][] = yearsAsc.map(() => Array(12).fill(""));
   for (const c of grid.cells) {
-    const y = years.indexOf(c.year);
+    const y = yearsAsc.indexOf(c.year);
     const m = c.month - 1;
     if (y >= 0 && m >= 0 && m < 12 && z[y]) {
       const row = z[y]!;
@@ -32,6 +34,10 @@ export function MonthlyHeatmap({ grid, height = 320, className }: Props) {
   const flat = grid.cells.map((c) => c.ret * 100);
   const maxAbs = Math.max(0.1, ...flat.map((v) => Math.abs(v)));
 
+  // Descending year list for the accessibility table so reading order matches
+  // the chart (newest at top).
+  const yearsDesc = [...yearsAsc].reverse();
+
   return (
     <>
       <PlotlyChart
@@ -39,7 +45,7 @@ export function MonthlyHeatmap({ grid, height = 320, className }: Props) {
           {
             type: "heatmap",
             x: MONTH_LABELS,
-            y: years.map(String),
+            y: yearsAsc.map(String),
             z,
             text: text as unknown as string[],
             texttemplate: "%{text}",
@@ -59,9 +65,11 @@ export function MonthlyHeatmap({ grid, height = 320, className }: Props) {
           },
         ]}
         layout={{
-          margin: { l: 48, r: 32, t: 12, b: 24 },
-          xaxis: { side: "top", showgrid: false, fixedrange: true },
-          yaxis: { autorange: "reversed", showgrid: false, fixedrange: true, type: "category" },
+          // Top margin must clear the side:"top" tick labels (~28px) plus a
+          // little breathing room — previously 12px which clipped Jan-Dec.
+          margin: { l: 48, r: 32, t: 44, b: 12 },
+          xaxis: { side: "top", showgrid: false, fixedrange: true, ticklen: 0 },
+          yaxis: { showgrid: false, fixedrange: true, type: "category" },
         }}
         height={height}
         className={className}
@@ -80,7 +88,9 @@ export function MonthlyHeatmap({ grid, height = 320, className }: Props) {
               </tr>
             </thead>
             <tbody>
-              {years.map((y, yi) => (
+              {yearsDesc.map((y) => {
+                const yi = yearsAsc.indexOf(y);
+                return (
                 <tr key={y}>
                   <td className="px-2 py-1 font-medium">{y}</td>
                   {MONTH_LABELS.map((_, mi) => {
@@ -98,7 +108,8 @@ export function MonthlyHeatmap({ grid, height = 320, className }: Props) {
                     );
                   })}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
