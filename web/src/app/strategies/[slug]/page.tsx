@@ -23,6 +23,7 @@ import { ParamsTable } from "@/components/strategy/params-table";
 import { FoldTable } from "@/components/strategy/fold-table";
 import { RiskCards } from "@/components/strategy/risk-cards";
 import { TradeExplorer } from "@/components/strategy/trade-explorer";
+import { VariantExplorer } from "@/components/strategy/variant-explorer";
 import { ScorecardTable } from "@/components/scorecard/scorecard-table";
 import { DiagnosticsList } from "@/components/scorecard/diagnostics-list";
 import { KillTriggers } from "@/components/scorecard/kill-triggers";
@@ -111,41 +112,13 @@ function StrategyBankPage({
         <Kpi label="Headline tier" value={head?.tier ?? "—"} />
       </section>
 
-      {/* VariantExplorer + ParamHeatmap arrive in T9/T10; placeholder for now. */}
-      <VariantExplorerStub bundle={bundle} selectedHash={selectedHash} />
+      {/* ParamHeatmap arrives in T10. */}
+      <VariantExplorer bundle={bundle} selectedHash={selectedHash} />
 
       <section className="prose prose-sm max-w-none">
         <pre className="whitespace-pre-wrap text-xs">{bundle.definition_md}</pre>
       </section>
     </div>
-  );
-}
-
-function VariantExplorerStub({
-  bundle,
-  selectedHash,
-}: {
-  bundle: StrategyBundleV2;
-  selectedHash: string | null;
-}) {
-  return (
-    <Card>
-      <CardContent className="py-4 text-sm">
-        <h2 className="font-heading text-lg mb-2">Variants ({bundle.variant_count})</h2>
-        <p className="text-xs text-muted-foreground mb-3">
-          Full sortable explorer + parameter heatmap land in the next tasks. Below is the inline variant list.
-        </p>
-        <ul className="text-xs tabular space-y-1">
-          {bundle.variants_inline.map((v) => (
-            <li key={v.params_hash} className={v.headline ? "font-semibold" : ""}>
-              {v.params_hash.slice(0, 12)} — WF {v.wf_sharpe?.toFixed(2) ?? "—"} · OOS {v.oos_sharpe?.toFixed(2) ?? "—"} · tier {v.tier ?? "—"}
-              {v.headline && " ★ headline"}
-              {selectedHash === v.params_hash && " (selected)"}
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
   );
 }
 
