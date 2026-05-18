@@ -6,6 +6,7 @@ import {
   getManifest,
   getStrategy,
   getStrategyAliases,
+  getStrategyV2,
 } from "@/lib/data";
 import { EquityOverlay } from "@/components/charts/equity-overlay";
 import { ScorecardTable } from "@/components/scorecard/scorecard-table";
@@ -15,6 +16,190 @@ import { Numeric } from "@/components/common/numeric";
 import { PctChange } from "@/components/common/pct-change";
 import { PALETTE } from "@/lib/theme";
 import { fmtBps, fmtMultiplier, fmtRatio, fmtSharpe, strategyFamilyLabel } from "@/lib/format";
+import type {
+  Gate,
+  Strategy as LegacyStrategy,
+  StrategyBundleV2,
+  VariantInline,
+} from "@/lib/types";
+
+// T14: each route param can now be a legacy slug, a strategy_id (V2 bank),
+// or a variant params_hash. resolveRef normalises that.
+type ResolvedRef =
+  | { kind: "legacy"; slug: string; strategy: LegacyStrategy }
+  | {
+      kind: "strategyV2";
+      strategy_id: string;
+      bundle: StrategyBundleV2;
+      headlineHash: string;
+    }
+  | {
+      kind: "variantInBank";
+      params_hash: string;
+      sid: string;
+      variant: VariantInline;
+      bundle: StrategyBundleV2;
+    };
+
+async function resolveRef(token: string): Promise<ResolvedRef | null> {
+  // (a) Legacy slug — if a hand-coded legacy bundle exists, prefer it so the
+  // pre-T14 rendering (full gates / diagnostics / equity-by-slug) keeps working.
+  // This covers the canonical /compare/rotation_rank_1/clenow_som_rank_9/ URL.
+  try {
+    const strategy = await getStrategy(token);
+    // getStrategy returns a parsed JSON; legacy bundles have `gates` and `slug`.
+    if (strategy && Array.isArray((strategy as LegacyStrategy).gates)) {
+      return { kind: "legacy", slug: token, strategy };
+    }
+  } catch {
+    // not a legacy bundle, fall through
+  }
+
+  const manifest = await getManifest();
+
+  // (b) strategy_id direct match in the V2 bank manifest
+  const knownSids = new Set<string>(
+    manifest.strategies
+      .map((s) => s.strategy_id)
+      .filter((sid): sid is string => typeof sid === "string"),
+  );
+  if (knownSids.has(token)) {
+    const bundle = await getStrategyV2(token);
+    return {
+      kind: "strategyV2",
+      strategy_id: token,
+      bundle,
+      headlineHash: bundle.headline_variant_hash,
+    };
+  }
+
+  // (c) params_hash -> bank variant
+  const sid = manifest.hash_to_strategy_id?.[token];
+  if (sid) {
+    const bundle = await getStrategyV2(sid);
+    const variant = bundle.variants_inline.find((v) => v.params_hash === token);
+    if (variant) {
+      return { kind: "variantInBank", params_hash: token, sid, variant, bundle };
+    }
+  }
+
+  // (d) Legacy alias fallback (rotation_rank_1 -> rotation__rebal-M, etc.)
+  const aliases = await getStrategyAliases();
+  if (aliases[token]) {
+    return resolveRef(aliases[token]);
+  }
+
+  return null;
+}
+
+// Card-display shape used by the existing rendering. Build from any ResolvedRef.
+interface DisplayCard {
+  href: string;
+  label: string;
+  family: string;
+  rank: number | string;
+  tier: string | null;
+  gates: Gate[];
+  metrics: {
+    wf_sharpe: number | null;
+    oos_sharpe: number | null;
+    cagr_oos: number | null;
+    max_dd: number | null;
+    dsr_eff: number | null;
+    cost_bps_mean: number | null;
+    order_mult: number | null;
+    monthly_hit: number | null;
+    n_pass: number | null;
+    n_eval: number | null;
+  };
+}
+
+function aggMedian(
+  bundle: StrategyBundleV2,
+  key: string,
+): number | null {
+  const five = bundle.aggregate_metrics?.[key];
+  return five?.median ?? null;
+}
+
+function toDisplay(ref: ResolvedRef): DisplayCard {
+  if (ref.kind === "legacy") {
+    const s = ref.strategy;
+    return {
+      href: `/strategies/${s.slug}/`,
+      label: s.label,
+      family: s.family,
+      rank: s.rank,
+      tier: s.tier,
+      gates: s.gates,
+      metrics: {
+        wf_sharpe: s.metrics.wf_sharpe,
+        oos_sharpe: s.metrics.oos_sharpe,
+        cagr_oos: s.metrics.cagr_oos,
+        max_dd: s.metrics.max_dd,
+        dsr_eff: s.metrics.dsr_eff,
+        cost_bps_mean: s.metrics.cost_bps_mean ?? null,
+        order_mult: s.metrics.order_mult,
+        monthly_hit: s.metrics.monthly_hit,
+        n_pass: s.metrics.n_pass,
+        n_eval: s.metrics.n_eval,
+      },
+    };
+  }
+  if (ref.kind === "strategyV2") {
+    const b = ref.bundle;
+    const headline = b.variants_inline.find((v) => v.params_hash === b.headline_variant_hash);
+    return {
+      href: `/strategies/${b.strategy_id}/`,
+      label: b.display_name,
+      family: b.family,
+      rank: "—",
+      tier: headline?.tier ?? null,
+      gates: [],
+      metrics: {
+        wf_sharpe: headline?.wf_sharpe ?? aggMedian(b, "wf_sharpe"),
+        oos_sharpe: headline?.oos_sharpe ?? aggMedian(b, "oos_sharpe"),
+        cagr_oos: headline?.cagr_oos ?? aggMedian(b, "cagr_oos"),
+        max_dd: headline?.max_dd ?? aggMedian(b, "max_dd"),
+        dsr_eff: aggMedian(b, "dsr_eff"),
+        cost_bps_mean: aggMedian(b, "cost_bps_mean"),
+        order_mult: headline?.order_mult ?? aggMedian(b, "order_mult"),
+        monthly_hit: headline?.monthly_hit ?? aggMedian(b, "monthly_hit"),
+        n_pass: headline?.n_pass ?? null,
+        n_eval: headline?.n_eval ?? null,
+      },
+    };
+  }
+  // variantInBank
+  const v = ref.variant;
+  const b = ref.bundle;
+  return {
+    href: `/strategies/${b.strategy_id}/`,
+    label: `${b.display_name} — ${v.params_hash.slice(0, 8)}`,
+    family: b.family,
+    rank: "—",
+    tier: v.tier,
+    gates: [],
+    metrics: {
+      wf_sharpe: v.wf_sharpe,
+      oos_sharpe: v.oos_sharpe,
+      cagr_oos: v.cagr_oos,
+      max_dd: v.max_dd,
+      dsr_eff: aggMedian(b, "dsr_eff"),
+      cost_bps_mean: aggMedian(b, "cost_bps_mean"),
+      order_mult: v.order_mult,
+      monthly_hit: v.monthly_hit,
+      n_pass: v.n_pass,
+      n_eval: v.n_eval,
+    },
+  };
+}
+
+function equityKey(ref: ResolvedRef): string {
+  if (ref.kind === "legacy") return ref.slug;
+  if (ref.kind === "variantInBank") return ref.params_hash;
+  return ref.headlineHash;
+}
 
 export async function generateStaticParams() {
   const manifest = await getManifest();
@@ -36,15 +221,15 @@ interface PageProps {
 
 export default async function ComparePage({ params }: PageProps) {
   const { a, b } = await params;
-  let strategyA, strategyB;
-  try {
-    [strategyA, strategyB] = await Promise.all([getStrategy(a), getStrategy(b)]);
-  } catch {
-    notFound();
-  }
+  const [aRef, bRef] = await Promise.all([resolveRef(a), resolveRef(b)]);
+  if (!aRef || !bRef) notFound();
+
+  const cardA = toDisplay(aRef);
+  const cardB = toDisplay(bRef);
+
   const [eqA, eqB] = await Promise.all([
-    getEquity(a, "350k"),
-    getEquity(b, "350k"),
+    getEquity(equityKey(aRef), "350k"),
+    getEquity(equityKey(bRef), "350k"),
   ]);
 
   return (
@@ -54,9 +239,9 @@ export default async function ComparePage({ params }: PageProps) {
           Side-by-side
         </p>
         <h1 className="font-heading text-3xl sm:text-4xl">
-          {strategyA.label}{" "}
+          {cardA.label}{" "}
           <span className="text-muted-foreground">vs</span>{" "}
-          {strategyB.label}
+          {cardB.label}
         </h1>
         <p className="text-sm text-muted-foreground leading-relaxed">
           Both strategies, RM 350k starting capital, normalised to 100 at panel start so they share a y-axis.
@@ -69,8 +254,8 @@ export default async function ComparePage({ params }: PageProps) {
           {eqA && eqB ? (
             <EquityOverlay
               series={[
-                { label: strategyA.label, equity: eqA, color: PALETTE.navy },
-                { label: strategyB.label, equity: eqB, color: PALETTE.gold },
+                { label: cardA.label, equity: eqA, color: PALETTE.navy },
+                { label: cardB.label, equity: eqB, color: PALETTE.gold },
               ]}
               normalise
               height={420}
@@ -84,8 +269,8 @@ export default async function ComparePage({ params }: PageProps) {
       </Card>
 
       <section className="grid sm:grid-cols-2 gap-4">
-        {[strategyA, strategyB].map((s) => (
-          <Card key={s.slug}>
+        {[cardA, cardB].map((s, i) => (
+          <Card key={`${s.href}-${i}`}>
             <CardContent className="py-4 space-y-3">
               <div className="flex items-baseline justify-between">
                 <div className="min-w-0">
@@ -93,7 +278,7 @@ export default async function ComparePage({ params }: PageProps) {
                     {strategyFamilyLabel(s.family)} · Rank #{s.rank}
                   </p>
                   <Link
-                    href={`/strategies/${s.slug}/`}
+                    href={s.href}
                     className="font-heading text-lg hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                   >
                     {s.label}
@@ -127,11 +312,21 @@ export default async function ComparePage({ params }: PageProps) {
       </section>
 
       <section className="grid sm:grid-cols-2 gap-4">
-        {[strategyA, strategyB].map((s) => (
-          <Card key={s.slug}>
+        {[cardA, cardB].map((s, i) => (
+          <Card key={`scorecard-${s.href}-${i}`}>
             <CardContent className="py-3 space-y-2">
               <h2 className="font-heading text-base">{s.label} — scorecard</h2>
-              <ScorecardTable gates={s.gates} />
+              {s.gates.length > 0 ? (
+                <ScorecardTable gates={s.gates} />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Per-gate breakdown lives on the strategy page.{" "}
+                  <Link href={s.href} className="underline">
+                    Open {s.label}
+                  </Link>
+                  .
+                </p>
+              )}
             </CardContent>
           </Card>
         ))}
