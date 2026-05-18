@@ -23,11 +23,18 @@ test("clicking a variant row opens slide-over with ?v=hash", async ({ page }) =>
   await page.goto("/strategies/");
   // Click the first strategy row to get into a detail page
   await page.locator("table a").first().click();
-  await page.waitForLoadState("domcontentloaded");
-  // Click the first variant row
-  await page.locator("table tbody tr").first().click();
+  await page.waitForLoadState("networkidle");
+
+  // Target the explorer table specifically: it has the "Hide dominated" label nearby.
+  // Find the first variant row INSIDE the section that has the Hide-dominated checkbox.
+  const explorerSection = page.locator("section", { hasText: "Hide dominated" });
+  const firstRow = explorerSection.locator("table tbody tr").first();
+  await expect(firstRow).toBeVisible();
+  await firstRow.click();
+
   // URL should now have ?v=
-  await page.waitForURL(/\?v=[a-f0-9]+/);
-  // Slide-over should show a "Scorecard" heading
-  await expect(page.getByText(/^Scorecard$/i)).toBeVisible();
+  await page.waitForURL(/\?v=[a-f0-9]+/, { timeout: 10_000 });
+
+  // Slide-over should show a "Scorecard" heading inside the Sheet
+  await expect(page.getByText(/^Scorecard$/i)).toBeVisible({ timeout: 5_000 });
 });

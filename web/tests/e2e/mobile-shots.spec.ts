@@ -12,6 +12,8 @@ const SHOTS = [
   { path: "/search/", name: "05-search" },
   { path: "/folds/", name: "06-folds" },
   { path: "/methodology/", name: "07-methodology" },
+  { path: "/strategies/", name: "08-bank-index" },
+  { path: "/strategies/clenow_som__regime-on__rebal-M/", name: "09-bank-strategy" },
 ];
 
 test.use({ ...devices["iPhone 13"] });

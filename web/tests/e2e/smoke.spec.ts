@@ -2,8 +2,11 @@ import { test, expect } from "@playwright/test";
 
 const ROUTES: Array<{ path: string; expectText: RegExp }> = [
   { path: "/", expectText: /Bursa Malaysia momentum/i },
+  { path: "/strategies/", expectText: /Strategies in the BursaHack research/i },
   { path: "/strategies/rotation_rank_1/", expectText: /Bursa Momentum Rotation/i },
-  { path: "/strategies/clenow_som_rank_9/", expectText: /Clenow Stocks-on-the-Move/i },
+  { path: "/strategies/rotation__rebal-M/", expectText: /Bursa Momentum Rotation/i },
+  { path: "/strategies/clenow_som_rank_9/", expectText: /Clenow Stocks on the Move/i },
+  { path: "/strategies/clenow_som__regime-on__rebal-M/", expectText: /Clenow Stocks on the Move/i },
   { path: "/search/", expectText: /Search explorer/i },
   { path: "/folds/", expectText: /Walk-forward folds/i },
   { path: "/methodology/", expectText: /Methodology/i },
@@ -42,10 +45,3 @@ test("command palette opens via trigger button and navigates", async ({ page }) 
   await expect(page.getByText(/Bursa Rotation/i).first()).toBeVisible();
 });
 
-test("strategy page tab switching", async ({ page }) => {
-  await page.goto("/strategies/rotation_rank_1/");
-  await page.getByRole("tab", { name: /Scorecard/i }).click();
-  await expect(page.getByRole("row").filter({ hasText: /PBO/i }).first()).toBeVisible();
-  await page.getByRole("tab", { name: /Costs/i }).click();
-  await expect(page.getByText(/Cost decomposition/i).first()).toBeVisible();
-});
