@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getEquity, getFolds, getManifest, getStrategy, getTrades } from "@/lib/data";
+import {
+  getEquity,
+  getFolds,
+  getManifest,
+  getStrategy,
+  getStrategyAliases,
+  getTrades,
+} from "@/lib/data";
 import { StrategyHeader } from "@/components/strategy/strategy-header";
 import { CapitalToggle } from "@/components/strategy/capital-toggle";
 import { EquityCurveChart } from "@/components/charts/equity-curve";
@@ -22,8 +29,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 
 export async function generateStaticParams() {
+  // Manifest entries dropped the legacy `slug` field once the bank rewrite
+  // landed (T6). The legacy rank-N slugs are the keys of strategy_aliases.json
+  // and have on-disk strategy JSONs — include them here so SSG covers them
+  // until T8 refactors this route to consume strategy_id directly.
   const manifest = await getManifest();
-  return manifest.strategies.map((s) => ({ slug: s.slug }));
+  const manifestSlugs = manifest.strategies
+    .map((s) => s.slug)
+    .filter((slug): slug is string => typeof slug === "string");
+  const aliasSlugs = Object.keys(await getStrategyAliases());
+  const all = Array.from(new Set([...manifestSlugs, ...aliasSlugs]));
+  return all.map((slug) => ({ slug }));
 }
 
 interface PageProps {

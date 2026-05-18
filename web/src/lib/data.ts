@@ -10,6 +10,7 @@ import type {
   FoldRow,
   Manifest,
   Strategy,
+  StrategyBundleV2,
   Trade,
   VariantDetail,
   VariantSummary,
@@ -32,8 +33,17 @@ export const getStrategy = cache(async (slug: string): Promise<Strategy> => {
 });
 
 export const getAllStrategies = cache(async (): Promise<Strategy[]> => {
+  // Manifest entries dropped the legacy `slug` field once the bank rewrite
+  // landed (T6). The legacy rank-N strategy JSON files are still on disk and
+  // are the keys of strategy_aliases.json — load those until T8 refactors the
+  // headline-strategy consumers to use strategy_id directly.
   const m = await getManifest();
-  return Promise.all(m.strategies.map((s) => getStrategy(s.slug)));
+  const manifestSlugs = m.strategies
+    .map((s) => s.slug)
+    .filter((slug): slug is string => typeof slug === "string");
+  const aliasSlugs = Object.keys(await getStrategyAliases());
+  const slugs = Array.from(new Set([...manifestSlugs, ...aliasSlugs]));
+  return Promise.all(slugs.map((slug) => getStrategy(slug)));
 });
 
 export const getEquity = cache(
@@ -98,6 +108,22 @@ export const getReport = cache(async (slug: string): Promise<string | null> => {
     return null;
   }
 });
+
+export const getStrategyV2 = cache(
+  async (strategyId: string): Promise<StrategyBundleV2> => {
+    return readJson<StrategyBundleV2>(`strategies/${strategyId}.json`);
+  },
+);
+
+export const getStrategyAliases = cache(
+  async (): Promise<Record<string, string>> => {
+    try {
+      return await readJson<Record<string, string>>("strategy_aliases.json");
+    } catch {
+      return {};
+    }
+  },
+);
 
 export const listReports = cache(async (): Promise<string[]> => {
   const dir = path.join(DATA_ROOT, "reports");

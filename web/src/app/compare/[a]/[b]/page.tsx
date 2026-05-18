@@ -5,6 +5,7 @@ import {
   getEquity,
   getManifest,
   getStrategy,
+  getStrategyAliases,
 } from "@/lib/data";
 import { EquityOverlay } from "@/components/charts/equity-overlay";
 import { ScorecardTable } from "@/components/scorecard/scorecard-table";
@@ -18,7 +19,12 @@ import { fmtBps, fmtMultiplier, fmtRatio, fmtSharpe, strategyFamilyLabel } from 
 export async function generateStaticParams() {
   const manifest = await getManifest();
   // Generate ordered pairs (a,b) where a != b for the two headline strategies.
-  const slugs = manifest.strategies.map((s) => s.slug);
+  // See /strategies/[slug] for why we union manifest slugs with alias keys.
+  const manifestSlugs = manifest.strategies
+    .map((s) => s.slug)
+    .filter((s): s is string => typeof s === "string");
+  const aliasSlugs = Object.keys(await getStrategyAliases());
+  const slugs = Array.from(new Set([...manifestSlugs, ...aliasSlugs]));
   const params: Array<{ a: string; b: string }> = [];
   for (const a of slugs) for (const b of slugs) if (a !== b) params.push({ a, b });
   return params;

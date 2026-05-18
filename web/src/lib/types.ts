@@ -204,11 +204,23 @@ export interface FoldRow {
 }
 
 export interface ManifestStrategy {
-  slug: string;
-  label: string;
+  // Legacy fields (kept for back-compat with existing rotation_rank_1 /
+  // clenow_som_rank_9 entries; refactored away in T8).
+  slug?: string;
+  label?: string;
+  tier?: string | null;
+  oos_sharpe?: number | null;
+  // New bank fields (every entry in the new manifest has these).
+  strategy_id?: string;
+  display_name?: string;
+  best_tier?: string | null;
+  best_oos_sharpe?: number | null;
+  variant_count?: number;
+  headline_variant_hash?: string;
+  headline_gates_passed?: number | null;
+  headline_gates_evaluated?: number | null;
+  // Shared.
   family: string;
-  tier: string | null;
-  oos_sharpe: number | null;
 }
 
 export interface Manifest {
@@ -227,4 +239,62 @@ export interface Manifest {
     data_source: string;
   };
   families: string[];
+  // hash -> strategy_id lookup (drives /search/<hash> redirect in a later task).
+  hash_to_strategy_id?: Record<string, string>;
+}
+
+export interface BankIndexEntry {
+  strategy_id: string;
+  family: string;
+  display_name: string;
+  best_oos_sharpe: number | null;
+  best_tier: string | null;
+  variant_count: number;
+  headline_variant_hash: string;
+  headline_gates_passed: number | null;
+  headline_gates_evaluated: number | null;
+}
+
+export interface FiveNumSummary {
+  min: number | null;
+  p25: number | null;
+  median: number | null;
+  p75: number | null;
+  max: number | null;
+  best_hash: string | null;
+}
+
+export interface VariantInline {
+  params_hash: string;
+  params: Record<string, unknown>;
+  wf_sharpe: number | null;
+  oos_sharpe: number | null;
+  cov: number | null;
+  max_dd: number | null;
+  cagr_oos: number | null;
+  slip_drag: number | null;
+  order_mult: number | null;
+  monthly_hit: number | null;
+  tier: string | null;
+  n_pass: number | null;
+  n_eval: number | null;
+  headline: boolean;
+}
+
+export interface StrategyBundleV2 {
+  strategy_id: string;
+  family: string;
+  display_name: string;
+  shape: Record<string, unknown>;
+  short_blurb: string;
+  definition_md: string;
+  references: Array<{ title: string; author?: string; year?: number }>;
+  source_file: string;
+  added: string;
+  one_liner: string;
+  variant_count: number;
+  headline_variant_hash: string;
+  headline_reason: string;
+  aggregate_metrics: Record<string, FiveNumSummary>;
+  variants_inline: VariantInline[];
 }
