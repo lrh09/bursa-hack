@@ -45,4 +45,6 @@ COPY --from=build /repo/web/node_modules ./web/node_modules
 COPY --from=build /repo/web/package.json ./web/package.json
 WORKDIR /app/web
 EXPOSE 3000
-CMD ["pnpm", "start", "-p", "3000"]
+# Shell form so ${PORT} from Railway/Fly expands at runtime; falls back to 3000
+# for local docker runs. Call next directly to dodge pnpm's argv forwarding for -p.
+CMD ["sh", "-c", "pnpm exec next start -p ${PORT:-3000} -H 0.0.0.0"]

@@ -20,3 +20,9 @@ __pycache__/
 .vscode/
 .idea/
 web/test-results/
+
+# Secrets
+.env
+.env.*
+!.env.example
+.auth/

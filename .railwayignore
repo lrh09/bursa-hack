@@ -1,0 +1,35 @@
+# Exclude secrets + local-only artifacts. Note that .gitignore is honoured by
+# default by `railway up`; we override the include path for results/ via
+# --no-gitignore (results/ is required by Dockerfile but gitignored).
+
+# Secrets
+.env
+.env.*
+.auth/
+
+# Local dev artifacts
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# Test outputs
+web/test-results/
+web/.tmp/
+web/node_modules/
+web/.next/
+
+# Tmp scratch
+.tmp/
+
+# Raw / parquet data (huge; we only need the results/ JSON+CSV artifacts)
+data/parquet/
+data/raw/
+stock_prices_xkls_all_file-1.csv
