@@ -87,15 +87,22 @@ def _partition_key(src_file: Path) -> tuple[int, int]:
 
 
 def _read_source(path: Path) -> pa.Table:
-    """Read one source parquet, convert KL -> UTC, add exchange/session cols."""
+    """Read one source parquet, convert KL -> UTC, add exchange/session cols.
+
+    Handles two vendor schemas:
+      - Pre-2023-10: `date` is tz-naive KL-local datetime; convert by subtracting 8h.
+      - 2023-10 onward: `date` is tz-aware (+08:00); convert to UTC then drop tz.
+    Both normalize to UTC-naive in storage.
+    """
     t = pq.read_table(path)
     df = t.to_pandas()
-    # Source 'date' is KL-local naive datetime. Convert to UTC by subtracting +8h.
     df = df.rename(columns={"date": "ts"})
-    df["ts"] = df["ts"] - pd.Timedelta(hours=KL_OFFSET_HOURS)
-    # Session label: derive from KL-local time
-    kl_minutes = (df["ts"] + pd.Timedelta(hours=KL_OFFSET_HOURS)).dt.hour * 60 + \
-                 (df["ts"] + pd.Timedelta(hours=KL_OFFSET_HOURS)).dt.minute
+    if getattr(df["ts"].dt, "tz", None) is not None:
+        df["ts"] = df["ts"].dt.tz_convert("UTC").dt.tz_localize(None)
+    else:
+        df["ts"] = df["ts"] - pd.Timedelta(hours=KL_OFFSET_HOURS)
+    kl = df["ts"] + pd.Timedelta(hours=KL_OFFSET_HOURS)
+    kl_minutes = kl.dt.hour * 60 + kl.dt.minute
     df["exchange"] = EXCHANGE
     df["session"] = (kl_minutes < 12 * 60 + 30).map({True: "morning", False: "afternoon"})
     # Ensure dtypes

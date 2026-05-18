@@ -129,6 +129,10 @@ class SweepOrchestrator(BaseModel):
     max_position_pct_adv: float = 0.10
     sigma_window_bars: int = 20
     adv_window_days: int = 20
+    # Optional explicit allow-list of params dicts. When set, the Cartesian
+    # product from `param_grid` is filtered down to only these tuples. Used
+    # by sweep scripts to prune degenerate cells (see scripts/sweep_orb_w1c.py).
+    allowed_param_tuples: list[tuple] | None = None
 
     # --------------------------- helpers ---------------------------
 
@@ -137,13 +141,23 @@ class SweepOrchestrator(BaseModel):
         return get_strategy(self.strategy_name)
 
     def enumerate_variants(self) -> list[tuple[str, BaseModel]]:
-        """Yield (variant_id, params_instance) for every cell in `param_grid`."""
+        """Yield (variant_id, params_instance) for every cell in `param_grid`.
+
+        If `allowed_param_tuples` is set, only combos whose sorted-items tuple
+        is in that allow-list are returned. This is the prune hook for sweep
+        scripts that want to drop degenerate cells without rewriting the grid.
+        """
         keys = sorted(self.param_grid.keys())
         values = [self.param_grid[k] for k in keys]
         out: list[tuple[str, BaseModel]] = []
         spec = self.spec
+        allow = self.allowed_param_tuples
         for combo in product(*values):
             kwargs = dict(zip(keys, combo))
+            if allow is not None:
+                key = tuple(sorted(kwargs.items()))
+                if key not in allow:
+                    continue
             try:
                 params = spec.params_model(**kwargs)
             except Exception:
