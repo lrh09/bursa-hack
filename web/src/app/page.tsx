@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   getAllStrategies,
   getEquity,
@@ -65,6 +66,36 @@ export default async function Home() {
           >
             → See both side-by-side with overlaid equity curves
           </a>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-heading text-2xl">Strategy Bank</h2>
+          <Link
+            href="/strategies/"
+            className="text-sm underline text-[var(--color-brand-gold-700)] hover:text-[var(--color-brand-gold)]"
+          >
+            Browse all {manifest.strategies.length} strategies →
+          </Link>
+        </div>
+        <p className="text-sm text-muted-foreground max-w-3xl">
+          Every strategy concept in the research, grouped by family × broad-shape switches. Variants like lookback 50 vs 100 days are collapsed under one strategy.
+        </p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {manifest.strategies.slice(0, 6).map((s) => (
+            <Link
+              key={s.strategy_id ?? s.slug}
+              href={`/strategies/${s.strategy_id ?? s.slug}/`}
+              className="rounded-md border border-border p-3 hover:border-foreground transition-colors block"
+            >
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{s.family}</div>
+              <div className="font-medium text-sm">{s.display_name ?? s.label}</div>
+              <div className="text-xs text-muted-foreground tabular mt-1">
+                {s.variant_count ?? "—"} variants · best OOS {s.best_oos_sharpe != null ? s.best_oos_sharpe.toFixed(2) : "—"} · tier {s.best_tier ?? s.tier ?? "—"}
+              </div>
+            </Link>
+          ))}
         </div>
       </section>
 
