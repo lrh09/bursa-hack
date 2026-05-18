@@ -41,6 +41,8 @@ export function FoldTimeline({ folds, height = 280 }: Props) {
   }));
 
   return (
+    <div className="-mx-3 sm:mx-0 overflow-x-auto">
+    <div className="min-w-[560px] sm:min-w-0 px-3 sm:px-0">
     <PlotlyChart
       data={[
         // Invisible scatter for tooltips
@@ -73,5 +75,7 @@ export function FoldTimeline({ folds, height = 280 }: Props) {
       height={height}
       ariaLabel="Walk-forward folds timeline"
     />
+    </div>
+    </div>
   );
 }

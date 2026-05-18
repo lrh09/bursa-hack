@@ -40,6 +40,10 @@ export function MonthlyHeatmap({ grid, height = 320, className }: Props) {
 
   return (
     <>
+      {/* Horizontal scroll on narrow viewports so each of the 12 month columns
+          stays >= 50px wide and the per-cell %-text remains readable. */}
+      <div className="-mx-3 sm:mx-0 overflow-x-auto">
+      <div className="min-w-[640px] sm:min-w-0 px-3 sm:px-0">
       <PlotlyChart
         data={[
           {
@@ -75,6 +79,9 @@ export function MonthlyHeatmap({ grid, height = 320, className }: Props) {
         className={className}
         ariaLabel="Monthly returns heatmap"
       />
+      </div>
+      </div>
+      <p className="mt-1 text-[10px] text-muted-foreground sm:hidden">Scroll sideways to read all 12 months.</p>
       <details className="mt-3 text-xs text-muted-foreground">
         <summary className="cursor-pointer hover:text-foreground">View as table (accessibility fallback)</summary>
         <div className="mt-2 overflow-x-auto">
