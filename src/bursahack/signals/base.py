@@ -1,4 +1,4 @@
-"""Strategy interface.
+"""Strategy interface + bank metadata declaration.
 
 A strategy plugs into the engine by producing target weights at each rebal date.
 Subclasses implement two methods:
@@ -12,12 +12,23 @@ Subclasses implement two methods:
 
 The default `weights()` method takes the score and picks the top-N by score
 with equal weighting. Override if you want vol-scaling / custom weighting.
+
+Bank metadata ClassVars
+-----------------------
+Every Strategy subclass declares metadata that drives the portal's strategy
+bank (`/strategies/...`). Mandatory fields are checked at build_data.py time.
+
+SHAPE_KEYS classify params: a param is a shape key iff changing its value
+would make a quant call the strategy "a different strategy" in conversation
+(e.g. `use_regime`, `rebal_freq`). Continuous knobs (lookback, top_n) are
+variants WITHIN a strategy, not new strategies. See:
+docs/superpowers/specs/2026-05-18-strategy-bank-design.md §2.
 """
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import pandas as pd
 
@@ -29,6 +40,18 @@ from bursahack.portfolio import top_n_equal_weight
 class Strategy(ABC):
     name: str
     params: dict[str, Any]
+
+    # --- Bank metadata (override on subclasses; defaults here) -------------
+    DISPLAY_NAME:  ClassVar[str] = ""
+    SHORT_BLURB:   ClassVar[str] = ""
+    SHAPE_KEYS:    ClassVar[tuple[str, ...]] = ()
+    CONT_KEYS:     ClassVar[tuple[str, ...]] = ()
+    DEFINITION_MD: ClassVar[str] = ""
+    REFERENCES:    ClassVar[tuple[dict, ...]] = ()
+    SOURCE_FILE:   ClassVar[str] = ""
+    ADDED:         ClassVar[str] = ""
+    HEADLINE_RULE: ClassVar[str] = "max wf_sharpe"
+    HOLDOUT_LOCKED: ClassVar[bool] = True
 
     @abstractmethod
     def eligibility(self, t: pd.Timestamp, panel: PricePanel) -> set[str]:
