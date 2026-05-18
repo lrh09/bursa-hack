@@ -43,7 +43,7 @@ export function Sidebar() {
                 "group flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
                 "hover:bg-sidebar-accent",
                 isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary -ml-px pl-[10px] font-medium"
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
                   : "text-sidebar-foreground/80",
               )}
             >
