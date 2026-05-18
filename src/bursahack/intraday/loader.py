@@ -188,4 +188,45 @@ def load_bars(
     return lf
 
 
-__all__ = ["load_bars", "snapshot_hash"]
+# ============================================================================
+# Data range (manifest-derived; cheap, no parquet scan)
+# ============================================================================
+
+
+def get_data_range(
+    data_root: Path | None = None, exchange: str = "XKLS"
+) -> tuple[datetime, datetime]:
+    """Inclusive (min_ts, max_ts) covered by the hive store.
+
+    Cheap: reads the manifest only, derives a (year, month) range from the
+    `exchange=<x>/year=YYYY/month=MM/...` partition paths and returns the
+    first instant of the earliest month -> last instant of the latest month
+    (UTC-naive, the same shape parquet timestamps land in).
+
+    Used by the orchestrator to auto-derive the holdout window without
+    loading a single bar.
+    """
+    manifest = _load_manifest(data_root)
+    df = manifest.with_columns([
+        pl.col("partition_path").str.extract(r"exchange=([^/]+)", 1).alias("_ex"),
+        pl.col("partition_path").str.extract(r"year=(\d{4})", 1).cast(pl.Int32).alias("_y"),
+        pl.col("partition_path").str.extract(r"month=(\d{2})", 1).cast(pl.Int32).alias("_m"),
+    ]).filter(pl.col("_ex") == exchange)
+    if df.height == 0:
+        raise FileNotFoundError(
+            f"manifest has no partitions for exchange={exchange!r}"
+        )
+    ys = df.get_column("_y").to_list()
+    ms = df.get_column("_m").to_list()
+    keys = sorted(zip(ys, ms))
+    y0, m0 = keys[0]
+    y1, m1 = keys[-1]
+    # min = first instant of (y0, m0); max = last instant of (y1, m1)
+    from calendar import monthrange
+    min_ts = datetime(y0, m0, 1)
+    last_day = monthrange(y1, m1)[1]
+    max_ts = datetime(y1, m1, last_day, 23, 59, 59)
+    return min_ts, max_ts
+
+
+__all__ = ["get_data_range", "load_bars", "snapshot_hash"]
