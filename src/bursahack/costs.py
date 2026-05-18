@@ -115,6 +115,10 @@ class FeeSchedule(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     name: str = "abstract"
+    # Minimum-economic-trade gate in RM. Trades below this notional are skipped
+    # (NOT down-sized). Retail brokers carry an effective floor due to fixed
+    # min-brokerage; institutional desks effectively don't. Per-subclass override.
+    min_notional_rm: float = 0.0
 
     def roundtrip_cost(self, notional_rm: float) -> float:  # pragma: no cover - abstract
         raise NotImplementedError
@@ -128,6 +132,7 @@ class MPlusRetailFee(FeeSchedule):
     """
 
     name: str = "mplus_retail"
+    min_notional_rm: float = 16_000.0
     brokerage_rate: float = 0.0005
     brokerage_min: float = 8.0
     sst_rate: float = 0.08
@@ -158,6 +163,7 @@ class InstitutionalFee(FeeSchedule):
     """Flat 5 bps round-trip, no minimum. Standard insto desk simplification."""
 
     name: str = "institutional"
+    min_notional_rm: float = 0.0
     roundtrip_bps: float = 5.0
 
     def roundtrip_cost(self, notional_rm: float) -> float:
