@@ -16,11 +16,40 @@ from bursahack.data_loader import load_panel
 from bursahack.metrics import compute_metrics, deflated_sharpe_ratio
 from bursahack.paths import RESULTS_DIR
 from bursahack.search import grid, run_grid
+from bursahack.signals.base import Strategy
 from bursahack.signals.clenow_som import ClenowSOM
 from bursahack.signals.momentum import Momentum
 from bursahack.signals.reversal import Reversal
 from bursahack.signals.rotation import DualSlopeRotation
 from bursahack.walkforward import HOLDOUT_START, walk_forward_folds
+
+
+def assert_holdout_safe(
+    strategy_cls: type[Strategy],
+    folds: list[dict],
+    *,
+    touch_holdout: bool,
+) -> None:
+    """Block fold execution that would touch 2020-2022 holdout data.
+
+    Raises RuntimeError unless ALL of: strategy_cls.HOLDOUT_LOCKED is False AND
+    touch_holdout is True. In-sample-only fold sets always pass.
+    """
+    any_oos = any(pd.Timestamp(f["validate_end"]) >= HOLDOUT_START for f in folds)
+    if not any_oos:
+        return
+    if strategy_cls.HOLDOUT_LOCKED:
+        raise RuntimeError(
+            f"holdout safety: {strategy_cls.__name__} has HOLDOUT_LOCKED=True "
+            f"but fold set includes validate_end >= {HOLDOUT_START.date()}. "
+            f"Set HOLDOUT_LOCKED=False on the class AND pass --touch-holdout."
+        )
+    if not touch_holdout:
+        raise RuntimeError(
+            f"holdout safety: {strategy_cls.__name__} has HOLDOUT_LOCKED=False but "
+            f"--touch-holdout was NOT passed; fold set includes validate_end "
+            f">= {HOLDOUT_START.date()}. Refusing to run."
+        )
 
 
 MOMENTUM_GRID = grid({
