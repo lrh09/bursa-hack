@@ -1,0 +1,32 @@
+# Default intraday platform config.
+# Variants inherit from this via `_extends: ../defaults.yaml`.
+
+name: default
+
+data:
+  data_root: data/intraday
+  snapshot_start: 2020-09-24
+  snapshot_end: 2021-10-04
+  exchange: XKLS
+
+universe:
+  name: top100_60d_adv
+  top_n: 100
+  lookback_days: 60
+  rebalance_freq: M
+  min_session_minutes: 100
+  exchange: XKLS
+
+impact:
+  c_liquid: 1.0
+  c_illiquid: 1.5
+  participation_cap: 0.10
+  min_trade_notional_rm: 16000.0
+
+fees:
+  - name: mplus_retail
+  - name: institutional
+
+engine:
+  fill_policy: next_bar_open
+  session_only: true
