@@ -11,7 +11,7 @@ Combined with a trend filter (above own MA) and the usual liquidity gates.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import pandas as pd
@@ -22,6 +22,25 @@ from bursahack.signals.base import Strategy
 
 @dataclass
 class DonchianBreakout(Strategy):
+    DISPLAY_NAME:  ClassVar[str] = "Donchian Breakout"
+    SHORT_BLURB:   ClassVar[str] = "Score by close/lookback-high; include if within breakout_thresh of the high and above trend MA."
+    SHAPE_KEYS:    ClassVar[tuple[str, ...]] = ("rebal_freq",)
+    CONT_KEYS:     ClassVar[tuple[str, ...]] = ("lookback", "breakout_thresh", "trend_ma", "top_n")
+    DEFINITION_MD: ClassVar[str] = """## Definition
+
+For each stock, compute the trailing `lookback`-day high. Score =
+`close / lookback_high`. A name is eligible if score >=
+`breakout_thresh` (default 0.95, i.e. within 5% of the high) AND price
+is above its own `trend_ma`-day moving average. Top-N by score, equal
+weighted. Channel breakout in the Donchian / turtle tradition.
+"""
+    REFERENCES:    ClassVar[tuple[dict, ...]] = (
+        {"title": "Way of the Turtle", "author": "Curtis Faith", "year": 2007},
+    )
+    SOURCE_FILE:   ClassVar[str] = "src/bursahack/signals/breakout.py"
+    ADDED:         ClassVar[str] = "2026-04-12"
+    HEADLINE_RULE: ClassVar[str] = "max wf_sharpe"
+
     name: str = "breakout"
     params: dict[str, Any] = field(default_factory=lambda: {
         "lookback": 252,           # 52-week high default

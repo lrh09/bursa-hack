@@ -21,7 +21,7 @@ Source-faithful pieces:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import pandas as pd
@@ -37,6 +37,24 @@ from bursahack.signals.helpers import (
 
 @dataclass
 class DualSlopeRotation(Strategy):
+    DISPLAY_NAME:  ClassVar[str] = "Bursa Momentum Rotation (dual-slope)"
+    SHORT_BLURB:   ClassVar[str] = "Composite 30+90-day annualised log-slope, top-N inverse-vol weighted with per-name cap."
+    SHAPE_KEYS:    ClassVar[tuple[str, ...]] = ("rebal_freq",)
+    CONT_KEYS:     ClassVar[tuple[str, ...]] = ("slope_lookback_short", "slope_lookback_long", "vol_period", "min_slope", "top_n", "weight_cap")
+    DEFINITION_MD: ClassVar[str] = """## Definition
+
+RH's original dual-slope rotation. Composite score = avg of two annualised
+exp-regression slopes (default 30d + 90d), each weighted by R^2. Picks
+top-N by score. Weights by inverse rolling vol with a per-name
+concentration cap (default 10%). Rebal frequency is the shape switch.
+"""
+    REFERENCES:    ClassVar[tuple[dict, ...]] = (
+        {"title": "RH original Python (port preserved bug-for-bug)", "year": 2024},
+    )
+    SOURCE_FILE:   ClassVar[str] = "src/bursahack/signals/rotation.py"
+    ADDED:         ClassVar[str] = "2026-04-12"
+    HEADLINE_RULE: ClassVar[str] = "max wf_sharpe"
+
     name: str = "rotation"
     params: dict[str, Any] = field(default_factory=lambda: {
         "slope_lookback_short": 30,

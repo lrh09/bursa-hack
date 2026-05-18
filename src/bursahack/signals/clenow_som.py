@@ -30,7 +30,7 @@ those names at the next rebal.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import pandas as pd
@@ -49,6 +49,25 @@ from bursahack.signals.helpers import (
 
 @dataclass
 class ClenowSOM(Strategy):
+    DISPLAY_NAME:  ClassVar[str] = "Clenow Stocks on the Move"
+    SHORT_BLURB:   ClassVar[str] = "Exp-regression slope x R^2, ATR-sized, top-N monthly. Trend-following with a market-regime filter."
+    SHAPE_KEYS:    ClassVar[tuple[str, ...]] = ("use_regime", "rebal_freq")
+    CONT_KEYS:     ClassVar[tuple[str, ...]] = ("lookback", "trend_ma", "regime_ma", "top_n", "atr_window", "max_gap")
+    DEFINITION_MD: ClassVar[str] = """## Definition
+
+Score = annualised exp-regression slope x R^2 over `lookback` days.
+Position sized inverse-ATR(`atr_window`). Eligibility gate: price above
+`trend_ma` and not above-`max_gap` from prior close. Regime filter: when
+`use_regime` is true, equity market proxy must be above `regime_ma`
+otherwise the strategy goes to cash.
+"""
+    REFERENCES:    ClassVar[tuple[dict, ...]] = (
+        {"title": "Stocks on the Move", "author": "Andreas Clenow", "year": 2015},
+    )
+    SOURCE_FILE:   ClassVar[str] = "src/bursahack/signals/clenow_som.py"
+    ADDED:         ClassVar[str] = "2026-04-12"
+    HEADLINE_RULE: ClassVar[str] = "max wf_sharpe"
+
     name: str = "clenow_som"
     params: dict[str, Any] = field(default_factory=lambda: {
         "lookback": 90,                # exp-regression window

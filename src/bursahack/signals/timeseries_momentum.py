@@ -17,7 +17,7 @@ holding losers down to the bottom.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import pandas as pd
@@ -28,6 +28,23 @@ from bursahack.signals.base import Strategy
 
 @dataclass
 class TimeSeriesMomentum(Strategy):
+    DISPLAY_NAME:  ClassVar[str] = "Time-Series Momentum (TSMOM)"
+    SHORT_BLURB:   ClassVar[str] = "Per-name trend filter: hold if N-day return is positive AND price is above own MA, else flat."
+    SHAPE_KEYS:    ClassVar[tuple[str, ...]] = ("rebal_freq",)
+    CONT_KEYS:     ClassVar[tuple[str, ...]] = ("lookback", "trend_ma", "top_n")
+    DEFINITION_MD: ClassVar[str] = """## Definition
+
+Per-security trend filter: long only if the trailing `lookback`-day
+return is positive AND the current close is above its own `trend_ma`-day
+moving average. Top-N by trailing return.
+"""
+    REFERENCES:    ClassVar[tuple[dict, ...]] = (
+        {"title": "Time Series Momentum", "author": "Moskowitz, Ooi, Pedersen", "year": 2012},
+    )
+    SOURCE_FILE:   ClassVar[str] = "src/bursahack/signals/timeseries_momentum.py"
+    ADDED:         ClassVar[str] = "2026-04-12"
+    HEADLINE_RULE: ClassVar[str] = "max wf_sharpe"
+
     name: str = "tsmom"
     params: dict[str, Any] = field(default_factory=lambda: {
         "lookback": 126,

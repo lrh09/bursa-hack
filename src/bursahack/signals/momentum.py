@@ -15,7 +15,7 @@ Eligibility filter:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 import pandas as pd
 
@@ -26,6 +26,23 @@ from bursahack.universe import equity_mask
 
 @dataclass
 class Momentum(Strategy):
+    DISPLAY_NAME:  ClassVar[str] = "Cross-Sectional Momentum"
+    SHORT_BLURB:   ClassVar[str] = "Classic 12-1 (or shorter) cumulative-return ranking, top-N equal weight."
+    SHAPE_KEYS:    ClassVar[tuple[str, ...]] = ("rebal_freq",)
+    CONT_KEYS:     ClassVar[tuple[str, ...]] = ("lookback", "skip", "top_n")
+    DEFINITION_MD: ClassVar[str] = """## Definition
+
+Cross-sectional momentum on cumulative returns over `lookback` days,
+skipping the most recent `skip` days (the classic 12-1 form for monthly
+rebal). Top-N by score, equal weighted.
+"""
+    REFERENCES:    ClassVar[tuple[dict, ...]] = (
+        {"title": "Returns to Buying Winners and Selling Losers", "author": "Jegadeesh & Titman", "year": 1993},
+    )
+    SOURCE_FILE:   ClassVar[str] = "src/bursahack/signals/momentum.py"
+    ADDED:         ClassVar[str] = "2026-04-12"
+    HEADLINE_RULE: ClassVar[str] = "max wf_sharpe"
+
     name: str = "momentum"
     params: dict[str, Any] = field(default_factory=lambda: {
         "lookback": 252,
