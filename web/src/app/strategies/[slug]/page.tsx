@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import {
   getEquity,
@@ -7,6 +7,7 @@ import {
   getManifest,
   getStrategy,
   getStrategyAliases,
+  getStrategyV2,
   getTrades,
 } from "@/lib/data";
 import { StrategyHeader } from "@/components/strategy/strategy-header";
@@ -27,18 +28,19 @@ import { DiagnosticsList } from "@/components/scorecard/diagnostics-list";
 import { KillTriggers } from "@/components/scorecard/kill-triggers";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
+import type { Strategy as LegacyStrategy, StrategyBundleV2 } from "@/lib/types";
 
 export async function generateStaticParams() {
-  // Manifest entries dropped the legacy `slug` field once the bank rewrite
-  // landed (T6). The legacy rank-N slugs are the keys of strategy_aliases.json
-  // and have on-disk strategy JSONs — include them here so SSG covers them
-  // until T8 refactors this route to consume strategy_id directly.
   const manifest = await getManifest();
-  const manifestSlugs = manifest.strategies
-    .map((s) => s.slug)
-    .filter((slug): slug is string => typeof slug === "string");
-  const aliasSlugs = Object.keys(await getStrategyAliases());
-  const all = Array.from(new Set([...manifestSlugs, ...aliasSlugs]));
+  const aliases = await getStrategyAliases();
+
+  const sids = manifest.strategies
+    .map((s) => s.strategy_id)
+    .filter((sid): sid is string => typeof sid === "string");
+  const legacySlugs = Object.keys(aliases); // rotation_rank_1, clenow_som_rank_9
+
+  // Dedupe just in case.
+  const all = Array.from(new Set([...sids, ...legacySlugs]));
   return all.map((slug) => ({ slug }));
 }
 
@@ -51,13 +53,126 @@ export default async function StrategyPage({ params, searchParams }: PageProps) 
   const { slug } = await params;
   const sp = await searchParams;
 
+  // (1) Alias redirect: rotation_rank_1 -> rotation__rebal-M
+  const aliases = await getStrategyAliases();
+  if (aliases[slug]) {
+    redirect(`/strategies/${aliases[slug]}/`);
+  }
+
+  // (2) New bank bundle?
+  let bundle: StrategyBundleV2 | null = null;
+  try {
+    bundle = await getStrategyV2(slug);
+  } catch {
+    // Falls through
+  }
+
+  if (bundle) {
+    return <StrategyBankPage bundle={bundle} selectedHash={sp.v ?? null} />;
+  }
+
+  // (3) Legacy fallback
   let strategy;
   try {
     strategy = await getStrategy(slug);
   } catch {
     notFound();
   }
+  return <StrategyLegacyPage strategy={strategy} sp={sp} />;
+}
 
+/* ------------------------------------------------------------------ */
+/* NEW: bank-style page for the auto-derived strategy bundles         */
+/* ------------------------------------------------------------------ */
+
+function StrategyBankPage({
+  bundle,
+  selectedHash,
+}: {
+  bundle: StrategyBundleV2;
+  selectedHash: string | null;
+}) {
+  const head = bundle.variants_inline.find((v) => v.headline) ?? bundle.variants_inline[0];
+  return (
+    <div className="space-y-8 fade-rise">
+      <header className="space-y-2 max-w-3xl">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-brand-gold-700)]">
+          Strategy Bank
+        </p>
+        <h1 className="font-heading text-3xl sm:text-4xl">{bundle.display_name}</h1>
+        <p className="text-sm text-muted-foreground">{bundle.short_blurb}</p>
+        <p className="text-xs text-muted-foreground tabular">{bundle.one_liner}</p>
+      </header>
+
+      <section className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+        <Kpi label="Variants" value={String(bundle.variant_count)} />
+        <Kpi label="Best OOS Sharpe" value={fmtNum(bundle.aggregate_metrics.oos_sharpe?.max)} />
+        <Kpi label="Median WF Sharpe" value={fmtNum(bundle.aggregate_metrics.wf_sharpe?.median)} />
+        <Kpi label="Headline tier" value={head?.tier ?? "—"} />
+      </section>
+
+      {/* VariantExplorer + ParamHeatmap arrive in T9/T10; placeholder for now. */}
+      <VariantExplorerStub bundle={bundle} selectedHash={selectedHash} />
+
+      <section className="prose prose-sm max-w-none">
+        <pre className="whitespace-pre-wrap text-xs">{bundle.definition_md}</pre>
+      </section>
+    </div>
+  );
+}
+
+function VariantExplorerStub({
+  bundle,
+  selectedHash,
+}: {
+  bundle: StrategyBundleV2;
+  selectedHash: string | null;
+}) {
+  return (
+    <Card>
+      <CardContent className="py-4 text-sm">
+        <h2 className="font-heading text-lg mb-2">Variants ({bundle.variant_count})</h2>
+        <p className="text-xs text-muted-foreground mb-3">
+          Full sortable explorer + parameter heatmap land in the next tasks. Below is the inline variant list.
+        </p>
+        <ul className="text-xs tabular space-y-1">
+          {bundle.variants_inline.map((v) => (
+            <li key={v.params_hash} className={v.headline ? "font-semibold" : ""}>
+              {v.params_hash.slice(0, 12)} — WF {v.wf_sharpe?.toFixed(2) ?? "—"} · OOS {v.oos_sharpe?.toFixed(2) ?? "—"} · tier {v.tier ?? "—"}
+              {v.headline && " ★ headline"}
+              {selectedHash === v.params_hash && " (selected)"}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Kpi({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border p-3">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="font-heading text-xl tabular">{value}</div>
+    </div>
+  );
+}
+
+function fmtNum(v: number | null | undefined) {
+  return v == null ? "—" : v.toFixed(2);
+}
+
+/* ------------------------------------------------------------------ */
+/* LEGACY: existing single-variant page (rotation_rank_1, clenow_…)   */
+/* ------------------------------------------------------------------ */
+
+async function StrategyLegacyPage({
+  strategy,
+  sp,
+}: {
+  strategy: LegacyStrategy;
+  sp: Record<string, string | undefined>;
+}) {
   const requestedCap = sp.capital;
   const capital = requestedCap && strategy.equity_capitals.includes(requestedCap)
     ? requestedCap
@@ -66,9 +181,9 @@ export default async function StrategyPage({ params, searchParams }: PageProps) 
       : strategy.equity_capitals[0] ?? "350k";
 
   const [equity, folds, trades] = await Promise.all([
-    getEquity(slug, capital),
+    getEquity(strategy.slug, capital),
     getFolds(strategy.family),
-    getTrades(slug),
+    getTrades(strategy.slug),
   ]);
   const variantFolds = folds.filter((f) => f.params_hash === strategy.params_hash);
 
@@ -327,7 +442,7 @@ export default async function StrategyPage({ params, searchParams }: PageProps) 
         <p>
           Compare with{" "}
           <Link
-            href={`/compare/${slug}/${slug === "rotation_rank_1" ? "clenow_som_rank_9" : "rotation_rank_1"}/`}
+            href={`/compare/${strategy.slug}/${strategy.slug === "rotation_rank_1" ? "clenow_som_rank_9" : "rotation_rank_1"}/`}
             className="underline text-[var(--color-brand-gold-700)] hover:text-[var(--color-brand-gold)]"
           >
             the other finalist →
