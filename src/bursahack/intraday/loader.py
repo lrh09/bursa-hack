@@ -9,11 +9,17 @@ to keep the memory profile flat as data grows.
 Determinism: `snapshot_hash(start, end)` is a Merkle hash over the partition
 SHAs in the manifest covering [start, end]. A new month landing later does
 NOT invalidate earlier-month hashes -> partial cache reuse Just Works.
+
+Scale-smoke finding (Phase A, 2026-05-19):
+  Polars 1.40.x's default in-memory engine SEGFAULTS when `.collect()`ing
+  a multi-year (>= ~2y) bar frame from the hive store (28M+ rows). Streaming
+  engine handles it cleanly in ~18s. `_collect()` below routes large
+  collects through `engine="streaming"`.
 """
 from __future__ import annotations
 
 import hashlib
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -83,6 +89,65 @@ def snapshot_hash(
 
 
 # ============================================================================
+# Streaming-engine wrapper
+# ============================================================================
+
+# Thresholds for picking the streaming engine. Polars 1.40.x default
+# (in-memory) engine segfaults on the 4.4y full data collect (28M rows,
+# 2.4 GB). Streaming handles it. We force streaming when EITHER the
+# date range exceeds STREAMING_DAYS_THRESHOLD or `force_streaming=True`.
+STREAMING_DAYS_THRESHOLD = 365  # any window > 1 year uses streaming
+STREAMING_ROW_THRESHOLD = 10_000_000
+
+
+class _StreamingLazyFrame:
+    """Thin wrapper that forces `.collect()` to use the streaming engine.
+
+    Returned by `load_bars()` whenever the requested window is wider than
+    `STREAMING_DAYS_THRESHOLD` days, OR `force_streaming=True` was passed.
+    Pass-through for all other LazyFrame ops via `__getattr__`.
+    """
+
+    __slots__ = ("_lf", "_force_streaming")
+
+    def __init__(self, lf: pl.LazyFrame, force_streaming: bool = True) -> None:
+        self._lf = lf
+        self._force_streaming = force_streaming
+
+    def collect(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if self._force_streaming and "engine" not in kwargs:
+            kwargs["engine"] = "streaming"
+        return self._lf.collect(*args, **kwargs)
+
+    def __getattr__(self, name):  # type: ignore[no-untyped-def]
+        attr = getattr(self._lf, name)
+        # Methods that return a LazyFrame should preserve the streaming
+        # wrapper so chained .filter().collect() still streams.
+        if callable(attr):
+            def wrapped(*a, **kw):  # type: ignore[no-untyped-def]
+                r = attr(*a, **kw)
+                if isinstance(r, pl.LazyFrame):
+                    return _StreamingLazyFrame(r, self._force_streaming)
+                return r
+            return wrapped
+        return attr
+
+
+def _collect(lf: pl.LazyFrame, *, streaming: bool) -> pl.DataFrame:
+    """Materialize a LazyFrame using the streaming engine when requested.
+
+    Centralised so both new query paths and the legacy direct-collect
+    sites converge on one place that decides engine. Existing callers
+    (`load_bars(...).collect()`) get the same behaviour automatically
+    because `load_bars` now returns a `_StreamingLazyFrame` for wide
+    windows.
+    """
+    if streaming:
+        return lf.collect(engine="streaming")
+    return lf.collect()
+
+
+# ============================================================================
 # Bar loader
 # ============================================================================
 
@@ -104,6 +169,8 @@ def load_bars(
     drop_phantom_bars: bool = True,
     data_root: Path | None = None,
     exchange: str = "XKLS",
+    *,
+    force_streaming: bool | None = None,
 ) -> pl.LazyFrame:
     """Load OHLCV bars over [start, end] at the requested freq.
 
@@ -126,9 +193,15 @@ def load_bars(
     pattern = str(root / "exchange=*" / "year=*" / "month=*" / "*.parquet")
     lf = pl.scan_parquet(pattern, hive_partitioning=True)
 
+    # F4 schema regression: hive partitions have mixed `code` width
+    # (`pyarrow.string()` vs `pyarrow.large_string()`). Polars' Utf8 absorbs
+    # both today via implicit promotion, but PyArrow upgrades could break this.
+    # Cast explicitly to Utf8 right after the scan so the loader's contract
+    # is one stable dtype across partitions.
+    lf = lf.with_columns(pl.col("code").cast(pl.Utf8))
+
     # Bound ts. The ts column is UTC; user gave KL-local dates.
     # Conservative bound: [start - 1 day, end + 1 day] in UTC; precise filter below.
-    from datetime import timedelta
     lf = lf.filter(
         (pl.col("ts") >= datetime.combine(start, datetime.min.time()) - timedelta(days=1))
         & (pl.col("ts") < datetime.combine(end, datetime.min.time()) + timedelta(days=2))
@@ -185,6 +258,17 @@ def load_bars(
         pass
 
     lf = lf.drop("_kl_date") if "_kl_date" in lf.collect_schema().names() else lf
+
+    # Decide whether to wrap with the streaming-engine shim. Caller can force
+    # via `force_streaming=True`; otherwise auto-detect on date range.
+    if force_streaming is None:
+        span_days = (end - start).days
+        use_streaming = span_days >= STREAMING_DAYS_THRESHOLD
+    else:
+        use_streaming = force_streaming
+
+    if use_streaming:
+        return _StreamingLazyFrame(lf, force_streaming=True)  # type: ignore[return-value]
     return lf
 
 
@@ -229,4 +313,12 @@ def get_data_range(
     return min_ts, max_ts
 
 
-__all__ = ["get_data_range", "load_bars", "snapshot_hash"]
+__all__ = [
+    "_StreamingLazyFrame",
+    "_collect",
+    "STREAMING_DAYS_THRESHOLD",
+    "STREAMING_ROW_THRESHOLD",
+    "get_data_range",
+    "load_bars",
+    "snapshot_hash",
+]

@@ -6,7 +6,12 @@ from datetime import date
 import polars as pl
 import pytest
 
-from bursahack.intraday.loader import load_bars, snapshot_hash
+from bursahack.intraday.loader import (
+    STREAMING_DAYS_THRESHOLD,
+    _StreamingLazyFrame,
+    load_bars,
+    snapshot_hash,
+)
 
 
 pytestmark = pytest.mark.skipif(
@@ -57,3 +62,46 @@ def test_load_bars_session_dates_only() -> None:
     # 2020-10-29 was a Bursa holiday -> no rows even though it's a weekday
     df = load_bars(date(2020, 10, 29), date(2020, 10, 29)).collect()
     assert df.height == 0
+
+
+def test_load_bars_short_window_returns_plain_lazyframe() -> None:
+    """Single-day load stays on the default (non-streaming) engine."""
+    lf = load_bars(date(2020, 9, 24), date(2020, 9, 24))
+    assert isinstance(lf, pl.LazyFrame)
+    assert not isinstance(lf, _StreamingLazyFrame)
+
+
+def test_load_bars_wide_window_returns_streaming_wrapper() -> None:
+    """Multi-year window auto-promotes to the streaming engine."""
+    lf = load_bars(date(2020, 9, 24), date(2022, 10, 1))  # >1y span
+    assert isinstance(lf, _StreamingLazyFrame)
+
+
+def test_load_bars_force_streaming_short_window() -> None:
+    """Force-streaming overrides the auto threshold even on short windows."""
+    lf = load_bars(date(2020, 9, 24), date(2020, 9, 24), force_streaming=True)
+    assert isinstance(lf, _StreamingLazyFrame)
+    df = lf.collect()
+    assert df.height > 0  # streaming engine returned a usable frame
+
+
+def test_load_bars_code_dtype_is_utf8() -> None:
+    """F4 regression: loader normalises `code` column to Utf8 regardless of
+    underlying hive partition dtype (string vs large_string)."""
+    df = load_bars(date(2020, 9, 24), date(2020, 9, 24)).collect()
+    assert df.schema["code"] == pl.Utf8
+
+
+@pytest.mark.slow
+def test_load_bars_multi_year_streaming_does_not_segfault() -> None:
+    """F1 regression: full multi-year collect must succeed via streaming.
+
+    Phase A finding: polars 1.40.x default engine segfaults on the full
+    4.4y collect (28M+ rows). Streaming handles it. This test is marked
+    slow because the collect can take 20+ seconds; it must succeed when
+    manually triggered.
+    """
+    lf = load_bars(date(2020, 9, 24), date(2023, 12, 31))
+    df = lf.collect()
+    assert df.height > 1_000_000  # millions of rows after streaming collect
+    assert df.schema["code"] == pl.Utf8
