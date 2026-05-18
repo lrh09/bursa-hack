@@ -24,6 +24,7 @@ import { FoldTable } from "@/components/strategy/fold-table";
 import { RiskCards } from "@/components/strategy/risk-cards";
 import { TradeExplorer } from "@/components/strategy/trade-explorer";
 import { VariantExplorer } from "@/components/strategy/variant-explorer";
+import { VariantSlideOverWrapper } from "@/components/strategy/variant-slide-over-wrapper";
 import { ParamHeatmap } from "@/components/strategy/param-heatmap";
 import { ScorecardTable } from "@/components/scorecard/scorecard-table";
 import { DiagnosticsList } from "@/components/scorecard/diagnostics-list";
@@ -127,6 +128,8 @@ function StrategyBankPage({
       <section className="prose prose-sm max-w-none">
         <pre className="whitespace-pre-wrap text-xs">{bundle.definition_md}</pre>
       </section>
+
+      <VariantSlideOverWrapper bundle={bundle} />
     </div>
   );
 }

@@ -18,3 +18,16 @@ test("bank index row links to a strategy detail page", async ({ page }) => {
   const href = await firstLink.getAttribute("href");
   expect(href).toMatch(/^\/strategies\/.+\/?$/);
 });
+
+test("clicking a variant row opens slide-over with ?v=hash", async ({ page }) => {
+  await page.goto("/strategies/");
+  // Click the first strategy row to get into a detail page
+  await page.locator("table a").first().click();
+  await page.waitForLoadState("domcontentloaded");
+  // Click the first variant row
+  await page.locator("table tbody tr").first().click();
+  // URL should now have ?v=
+  await page.waitForURL(/\?v=[a-f0-9]+/);
+  // Slide-over should show a "Scorecard" heading
+  await expect(page.getByText(/^Scorecard$/i)).toBeVisible();
+});
