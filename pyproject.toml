@@ -10,6 +10,11 @@ dependencies = [
     "matplotlib>=3.10.9",
     "reportlab>=4.5.1",
     "pymupdf>=1.27.2.3",
+    "polars>=1.40",
+    "duckdb>=1.5",
+    "exchange_calendars>=4.5",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
