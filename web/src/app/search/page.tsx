@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getAllVariants, getManifest } from "@/lib/data";
 import { VariantExplorer } from "@/components/search/variant-explorer";
 
@@ -14,12 +15,18 @@ export default async function SearchPage() {
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-brand-gold-700)]">
           Brute-force search
         </p>
-        <h1 className="font-heading text-3xl sm:text-4xl">Search explorer</h1>
+        <h1 className="font-heading text-3xl sm:text-4xl">All variants — flat view</h1>
         <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-          Every {manifest.variants_count} variant of the parameter sweep, evaluated across {manifest.folds_count.toLocaleString()} walk-forward fold backtests. Filter by family, sort by metric, click into any row for the full per-variant scorecard.
+          Cross-strategy variant table — every backtest in the search, ungrouped. Use the{" "}
+          <Link href="/strategies/" className="underline text-[var(--color-brand-gold-700)] hover:text-[var(--color-brand-gold)]">Strategy Bank</Link>{" "}
+          if you want the curated view. {manifest.variants_count} variants × {manifest.folds_count.toLocaleString()} fold backtests.
         </p>
       </header>
-      <VariantExplorer variants={variants} families={manifest.families} />
+      <VariantExplorer
+        variants={variants}
+        families={manifest.families}
+        hashToSid={manifest.hash_to_strategy_id ?? {}}
+      />
     </div>
   );
 }

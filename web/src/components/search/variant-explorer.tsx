@@ -36,9 +36,10 @@ const COLS: Array<{ key: SortKey; label: string }> = [
 interface Props {
   variants: VariantSummary[];
   families: string[];
+  hashToSid: Record<string, string>;
 }
 
-export function VariantExplorer({ variants, families }: Props) {
+export function VariantExplorer({ variants, families, hashToSid }: Props) {
   const [query, setQuery] = React.useState("");
   const [activeFamilies, setActiveFamilies] = React.useState<Set<string>>(new Set());
   const [onlyTopK, setOnlyTopK] = React.useState(false);
@@ -158,11 +159,15 @@ export function VariantExplorer({ variants, families }: Props) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((v) => (
+            {filtered.map((v) => {
+              const targetHref = hashToSid[v.params_hash]
+                ? `/strategies/${hashToSid[v.params_hash]}/?v=${v.params_hash}`
+                : `/search/${v.params_hash}/`;
+              return (
               <TableRow key={v.params_hash}>
                 <TableCell>
                   <Link
-                    href={`/search/${v.params_hash}/`}
+                    href={targetHref}
                     className="font-mono text-xs text-foreground hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                   >
                     {v.params_hash.slice(0, 10)}
@@ -196,7 +201,8 @@ export function VariantExplorer({ variants, families }: Props) {
                   {v.tier ? <TierPill tier={v.tier} size="sm" /> : <span className="text-muted-foreground text-xs">—</span>}
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
             {!filtered.length && (
               <TableRow>
                 <TableCell colSpan={COLS.length + 3} className="text-center text-muted-foreground py-8">
