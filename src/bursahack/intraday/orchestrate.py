@@ -605,12 +605,18 @@ def _dispatch_variant_from_paths(
     # Use loader.load_bars but pass the members parquet via universe=None,
     # then inner-join with members. This keeps the worker independent of
     # Universe.members_for_range cache races.
+    # CRITICAL: push the member-code filter INTO the lazy frame BEFORE collect,
+    # so streaming actually reduces the materialised set. Collecting the full
+    # universe (285M rows = ~17 GB) before filtering would OOM/segfault on
+    # any multi-year window.
     from bursahack.intraday.loader import load_bars as _load_bars
+    member_codes = members["code"].unique().to_list()
     bars_lf = _load_bars(
         train_start, train_end, universe=None, freq=freq, force_streaming=True,
     )
+    bars_lf = bars_lf.filter(pl.col("code").is_in(member_codes))
     bars = bars_lf.collect()
-    # Join on (kl_date, code).
+    # Join on (kl_date, code) to attach per-(date, code) membership flag.
     from bursahack.intraday.calendar import KL_OFFSET_HOURS as _KL
     bars = bars.with_columns(
         (pl.col("ts") + pl.duration(hours=_KL)).dt.date().alias("_kl_date")

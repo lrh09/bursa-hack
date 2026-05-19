@@ -120,11 +120,20 @@ class Universe(BaseModel):
                 filters=filt,
             )
             if t.num_rows:
+                # Normalize code to large_string before concat — hive partitions
+                # written across vendor schema changes have inconsistent code
+                # widths (string vs large_string), which crashes concat_tables.
+                if t.schema.field("code").type != pa.large_string():
+                    t = t.set_column(
+                        t.schema.get_field_index("code"),
+                        "code",
+                        t.column("code").cast(pa.large_string()),
+                    )
                 tables.append(t)
         if not tables:
             return pa.table({
                 "ts": pa.array([], type=pa.timestamp("ns")),
-                "code": pa.array([], type=pa.string()),
+                "code": pa.array([], type=pa.large_string()),
                 "volume": pa.array([], type=pa.int64()),
                 "value": pa.array([], type=pa.float64()),
             })

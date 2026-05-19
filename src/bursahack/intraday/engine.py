@@ -60,7 +60,10 @@ from bursahack.intraday.registry import SIGNAL_SCHEMA, validate_signal_frame
 from bursahack.intraday.sizing import FixedFractionalRiskSizer, Sizer
 
 ENGINE_VERSION = "1.1.0"
-HOLDOUT_TRADING_DAYS = 43
+# Iron: locked to 252 sessions (~1y) after full-data ingest 2026-05-19.
+# Was 43 (sample-era); 252 gives a genuinely out-of-regime OOS slice
+# spanning ~Feb 2024 -> Feb 2025 vs 2020-2023 training.
+HOLDOUT_TRADING_DAYS = 252
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +217,13 @@ class IntradayEngine(BaseModel):
         t0 = datetime.now(timezone.utc)
 
         if isinstance(bars, pl.LazyFrame):
-            bars = bars.collect()
+            # Force streaming engine — polars 1.40 segfaults on multi-year
+            # 1m collects in non-streaming mode (Phase A scale-smoke finding).
+            try:
+                bars = bars.collect(engine="streaming")
+            except TypeError:
+                # Older polars: fall back to default; will OOM on >2y data.
+                bars = bars.collect()
 
         signals = validate_signal_frame(signals)
         impact = impact or ImpactModel()
