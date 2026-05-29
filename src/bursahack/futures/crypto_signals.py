@@ -23,6 +23,28 @@ import numpy as np
 import pandas as pd
 
 
+def clean_panel(prices: pd.DataFrame, min_days: int = 365, clip: float = 0.50,
+                ann: int = 365) -> pd.DataFrame:
+    """Data hygiene for crypto price panels: drop too-short series, winsorize
+    daily returns to +-clip (kills bad-tick blowups like the +69809% artifact),
+    rebuild clean prices, drop coins with still-absurd (>300% annual) vol."""
+    keep = [c for c in prices.columns if prices[c].notna().sum() >= min_days]
+    px = prices[keep]
+    ret = px.pct_change(fill_method=None).clip(-clip, clip)
+    rebuilt = {}
+    for c in keep:
+        first = px[c].first_valid_index()
+        if first is None:
+            continue
+        r = ret[c].copy()
+        r.loc[first] = 0.0
+        rebuilt[c] = px[c].loc[first] * (1.0 + r.loc[first:]).cumprod()
+    out = pd.DataFrame(rebuilt).reindex(prices.index)
+    annvol = out.pct_change(fill_method=None).std() * np.sqrt(ann)
+    sane = [c for c in out.columns if annvol[c] < 3.0]
+    return out[sane]
+
+
 def _vol_target(raw: pd.Series, pvol: float, vol_window: int, ann: int,
                 max_lev: float = 5.0) -> pd.Series:
     """Scale a raw return stream to a target annual vol (trailing, lagged)."""
@@ -129,4 +151,5 @@ def ensemble_returns(sleeves: list[pd.Series], *, pvol: float = 0.20,
     return _vol_target(raw, pvol, vol_window, ann)
 
 
-__all__ = ["xs_momentum_returns", "xs_reversal_returns", "ensemble_returns"]
+__all__ = ["clean_panel", "xs_momentum_returns", "xs_reversal_returns",
+           "ensemble_returns", "funding_carry_returns"]
