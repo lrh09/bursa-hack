@@ -22,6 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 notebook = ["jupyter", "matplotlib", "seaborn"]
 dev = ["pytest", "ruff"]
+research = ["yfinance>=0.2"]  # free daily futures data for the diversification test
 
 [build-system]
 requires = ["setuptools>=68"]
