@@ -36,6 +36,8 @@ class TSMOMConfig:
     vol_window: int = 63                       # trailing realized-vol window (days)
     max_leverage: float = 5.0                  # cap on portfolio vol-scaling
     default_cost_bps: float = 2.0              # round-trip bps if ticker not in map
+    ann_factor: int = 252                      # periods/year for annualization
+                                               # (252 futures/equities, 365 crypto)
 
 
 @dataclass
@@ -94,13 +96,14 @@ def backtest_tsmom(
     """
     cfg = cfg or TSMOMConfig()
     cost_bps = cost_bps or {}
+    af = cfg.ann_factor
     prices = prices.sort_index()
     ret = prices.pct_change(fill_method=None)
 
     # Per-market trailing realized vol (annualized), lagged so the position
     # decided at close t uses only info up to t.
     daily_vol = ret.rolling(cfg.vol_window).std()
-    ann_vol = daily_vol * np.sqrt(TRADING_DAYS)
+    ann_vol = daily_vol * np.sqrt(af)
 
     signal = compute_signal(prices, cfg)
 
@@ -130,7 +133,7 @@ def backtest_tsmom(
 
     # Portfolio-level vol targeting (the risk dial). Trailing, lagged.
     port_daily_vol = raw_port.rolling(cfg.vol_window).std().shift(1)
-    target_daily = cfg.portfolio_vol_target / np.sqrt(TRADING_DAYS)
+    target_daily = cfg.portfolio_vol_target / np.sqrt(af)
     leverage = (target_daily / port_daily_vol).clip(upper=cfg.max_leverage)
     leverage = leverage.replace([np.inf, -np.inf], np.nan).fillna(0.0)
     port_ret = (leverage * raw_port).fillna(0.0)
@@ -141,7 +144,7 @@ def backtest_tsmom(
     sleeve_net = sleeve_net.iloc[warmup:]
 
     equity = (1.0 + port_ret).cumprod()
-    metrics = compute_metrics(port_ret, equity)
+    metrics = compute_metrics(port_ret, equity, ann_factor=af)
 
     return TSMOMResult(
         portfolio_returns=port_ret,
@@ -152,7 +155,8 @@ def backtest_tsmom(
     )
 
 
-def compute_metrics(returns: pd.Series, equity: pd.Series) -> dict[str, float]:
+def compute_metrics(returns: pd.Series, equity: pd.Series,
+                    ann_factor: int = TRADING_DAYS) -> dict[str, float]:
     """CAGR, vol, Sharpe, max-DD, Calmar, skew — the CAGR-investor's panel."""
     r = returns.dropna()
     if len(r) < 2 or equity.empty:
@@ -160,10 +164,10 @@ def compute_metrics(returns: pd.Series, equity: pd.Series) -> dict[str, float]:
                 ("cagr", "ann_vol", "sharpe", "max_drawdown", "calmar", "skew", "n_days")}
     n = len(r)
     total_growth = float(equity.iloc[-1])
-    years = n / TRADING_DAYS
+    years = n / ann_factor
     cagr = total_growth ** (1.0 / years) - 1.0 if total_growth > 0 and years > 0 else -1.0
-    ann_vol = float(r.std() * np.sqrt(TRADING_DAYS))
-    sharpe = float(r.mean() / r.std() * np.sqrt(TRADING_DAYS)) if r.std() > 0 else 0.0
+    ann_vol = float(r.std() * np.sqrt(ann_factor))
+    sharpe = float(r.mean() / r.std() * np.sqrt(ann_factor)) if r.std() > 0 else 0.0
     running_max = equity.cummax()
     drawdown = equity / running_max - 1.0
     max_dd = float(drawdown.min())
