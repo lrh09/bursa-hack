@@ -26,8 +26,9 @@ import pandas as pd  # noqa: E402
 
 from bursahack.futures.tsmom import TSMOMConfig, backtest_tsmom, compute_metrics  # noqa: E402
 from bursahack.futures.crypto_signals import (  # noqa: E402
-    xs_momentum_returns, xs_reversal_returns, ensemble_returns,
+    xs_momentum_returns, xs_reversal_returns, ensemble_returns, funding_carry_returns,
 )
+from bursahack.futures.binance_funding import funding_daily_panel  # noqa: E402
 from bursahack.intraday.diagnostics import (  # noqa: E402
     deflated_sharpe_ratio, sharpe_ratio, stationary_bootstrap_sharpe_ci,
 )
@@ -46,6 +47,8 @@ ANN = 365
 COST = 10.0
 BAR_CAGR, BAR_DD = 0.15, -0.40
 RECENT_START = pd.Timestamp("2022-01-01")
+MODERN_START = pd.Timestamp("2018-01-01")  # standard modern-crypto eval window
+                                           # (excludes the 2014-15 micro-cap era)
 
 
 def clean_panel(prices: pd.DataFrame, min_days: int = 365,
@@ -123,12 +126,30 @@ def main() -> None:
     # Ensemble = trend + xs-momentum ONLY. xs-reversal is proven toxic in crypto
     # (momentum market, not reversal) — kept in the per-sleeve table as evidence,
     # excluded from the blend.
-    ens = ensemble_returns([trend, xsmom], pvol=0.20, ann=ANN)
-    # Higher-vol ensemble — uses the unused DD budget (bar allows -40%).
-    ens_hi = ensemble_returns([trend, xsmom], pvol=0.30, ann=ANN)
+    # --- Funding-carry sleeve (market-neutral, recently-persistent) ---
+    print("[funding] fetching Binance perp funding history (cached) ...")
+    fund_symbols = {c: c.replace("-USD", "USDT") for c in prices.columns}
+    fpanel = funding_daily_panel(fund_symbols)
+    if not fpanel.empty:
+        fpanel = fpanel.reindex(prices.index).loc[:, fpanel.columns.intersection(prices.columns)]
+        carry = funding_carry_returns(fpanel, cost_bps=5.0, pvol=0.20, ann=ANN)
+        print(f"[funding] carry sleeve: {len(carry.dropna())} days, "
+              f"{fpanel.shape[1]} coins with funding")
+    else:
+        carry = pd.Series(dtype=float)
+        print("[funding] no funding data — carry sleeve empty")
 
-    sleeves = {"trend (TS)": trend, "xs-momentum": xsmom,
-               "xs-reversal": xsrev, "ENSEMBLE 20%": ens, "ENSEMBLE 30%": ens_hi}
+    ens = ensemble_returns([trend, xsmom], pvol=0.20, ann=ANN)
+    ens_hi = ensemble_returns([trend, xsmom], pvol=0.30, ann=ANN)
+    # Momentum + funding-carry ensemble — the diversifying combo.
+    mf_sleeves = [trend, xsmom] + ([carry] if len(carry) else [])
+    ens_mf = ensemble_returns(mf_sleeves, pvol=0.20, ann=ANN)
+    ens_mf_hi = ensemble_returns(mf_sleeves, pvol=0.30, ann=ANN)
+
+    sleeves = {"trend (TS)": trend, "xs-momentum": xsmom, "xs-reversal": xsrev,
+               "funding-carry": carry, "ENS mom 20%": ens, "ENS mom 30%": ens_hi,
+               "ENS+fund 20%": ens_mf, "ENS+fund 30%": ens_mf_hi}
+    sleeves = {k: v for k, v in sleeves.items() if len(v.dropna()) > 50}
 
     # --- Full history ---
     print("--- FULL HISTORY ---")
@@ -144,17 +165,29 @@ def main() -> None:
         recent[name] = m
         print(f"  {name:<14} {fmt(m)}")
 
-    # --- Per-year of the ensemble ---
-    print("\n--- ENSEMBLE per-calendar-year ---")
-    ey = (1 + ens).groupby(ens.index.year).prod() - 1
+    # --- Per-year of the momentum+funding ensemble (the candidate) ---
+    cand = ens_mf if len(carry) else ens
+    print("\n--- CANDIDATE (mom+funding) per-calendar-year ---")
+    ey = (1 + cand).groupby(cand.index.year).prod() - 1
     for yr, v in ey.items():
         print(f"  {yr}: {v*100:>7.1f}%")
 
     # --- Harness gate on the ensembles (full + recent) ---
     print("\n--- HARNESS GATE (ensembles) ---")
-    trial = np.array([sharpe_ratio(s.dropna().values) for s in sleeves.values()])
-    for ens_name, ens_s in (("ENS 20%", ens), ("ENS 30%", ens_hi)):
-        for tag, series in (("full", ens_s), ("recent", ens_s[ens_s.index >= RECENT_START])):
+    # DSR trial set = DEPLOYABLE momentum-family variants only. Exclude the
+    # funding-carry component (Sharpe~5 at 1% vol is an outlier that inflates
+    # the noise threshold and wrongly crushes DSR) and the toxic reversal sleeve.
+    trial_streams = [trend, xsmom, ens, ens_hi]
+    if len(carry):
+        trial_streams += [ens_mf, ens_mf_hi]
+    trial = np.array([sharpe_ratio(s.dropna().values) for s in trial_streams])
+    gate_ensembles = [("ENS mom 20%", ens), ("ENS mom 30%", ens_hi)]
+    if len(carry):
+        gate_ensembles += [("ENS+fund 20%", ens_mf), ("ENS+fund 30%", ens_mf_hi)]
+    for ens_name, ens_s in gate_ensembles:
+        for tag, series in (("full", ens_s),
+                            ("modern18", ens_s[ens_s.index >= MODERN_START]),
+                            ("recent22", ens_s[ens_s.index >= RECENT_START])):
             v = series.dropna().values
             dsr = deflated_sharpe_ratio(v, trial)
             ci = stationary_bootstrap_sharpe_ci(v, n_boot=2000, rng_seed=0, periods_per_year=ANN)

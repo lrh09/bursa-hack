@@ -85,6 +85,37 @@ def xs_reversal_returns(prices: pd.DataFrame, *, lookback: int = 5,
     return out.iloc[warmup:]
 
 
+def funding_carry_returns(funding_panel: pd.DataFrame, *, cost_bps: float = 5.0,
+                          pvol: float = 0.20, vol_window: int = 63,
+                          ann: int = 365, harvest_only_positive: bool = True) -> pd.Series:
+    """Delta-neutral perp funding-harvest sleeve (market-neutral yield).
+
+    Each coin, each day: if funding>0, a long-spot/short-perp position RECEIVES
+    the funding (delta-neutral, no price exposure). We harvest positive funding
+    across the basket (equal-weight), then vol-target the (low-vol) stream up to
+    the book's risk dial.
+
+    `harvest_only_positive=True` is the implementable retail version (no spot
+    borrow needed): earn funding when positive, sit flat when negative. Costs
+    are charged per day the position is on (entry/exit + a small holding drag).
+
+    funding_panel: daily per-coin total funding (decimal), DatetimeIndex × coins.
+    """
+    f = funding_panel.copy()
+    if harvest_only_positive:
+        earn = f.clip(lower=0.0)              # receive funding only when positive
+    else:
+        earn = f.abs()                       # always on the receiving side (needs borrow)
+    # Per-day basket carry = mean across coins that have a perp that day.
+    on = earn.notna() & (f.fillna(0.0) != 0.0)
+    n_on = on.sum(axis=1).astype(float)                  # int count -> float
+    basket = earn.where(on).sum(axis=1)
+    raw = (basket / n_on.replace(0.0, np.nan)).fillna(0.0)
+    # Daily holding cost while positioned (rough): a few bps/day amortized.
+    raw = raw - (cost_bps / 10_000.0) * (n_on > 0).astype(float) / 30.0
+    return _vol_target(raw, pvol, vol_window, ann)
+
+
 def ensemble_returns(sleeves: list[pd.Series], *, pvol: float = 0.20,
                      vol_window: int = 63, ann: int = 365) -> pd.Series:
     """Equal-risk blend of sleeve return streams, then re-vol-target the book.
