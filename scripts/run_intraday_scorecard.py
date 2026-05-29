@@ -79,6 +79,7 @@ from bursahack.intraday.cache import ResultCache  # noqa: E402
 from bursahack.intraday.cpcv import make_cpcv_splits  # noqa: E402
 from bursahack.intraday.diagnostics import (  # noqa: E402
     deflated_sharpe_ratio,
+    effective_n,
     pbo,
     sharpe_ratio,
     stationary_bootstrap_sharpe_ci,
@@ -323,16 +324,32 @@ def main() -> None:
         # DSR for the top-K variants.
         per_variant_scores: list[dict] = []
         ranked = np.argsort(-mean_sr_by_variant)  # descending
-        # All-trial Sharpes (one per variant, averaged over splits) feed the
-        # false-strategy-theorem correction.
-        trial_sharpes = mean_sr_by_variant.copy()
+        # Trial Sharpes for the DSR false-strategy correction. CRITICAL SCALE
+        # FIX: deflated_sharpe_ratio computes its internal Sharpe PER-PERIOD
+        # (non-annualized) from the raw returns, so the trial Sharpes MUST be on
+        # the same per-period scale — NOT the annualized path Sharpes. Feeding
+        # annualized Sharpes makes SR0 ~sqrt(252)x too large and DSR collapses
+        # to 0.000 for every variant (the bug that made the whole column dead).
+        trial_sharpes = np.array([sharpe_ratio(ret_matrix[:, v]) for v in range(n_var)])
+        # Effective N: variants within a family are highly correlated, so the
+        # naive trial count (N=31) over-penalizes. Correlation-adjust it.
+        with np.errstate(invalid="ignore", divide="ignore"):
+            corr = np.corrcoef(ret_matrix, rowvar=False)
+        corr = np.nan_to_num(corr, nan=0.0)
+        np.fill_diagonal(corr, 1.0)
+        eff_n_trials = effective_n(corr)
+        print(f"  effective_n trials: {eff_n_trials:.1f} (of {n_var})")
 
         for v_idx in ranked:
             vm = variant_meta[v_idx]
             v_returns = ret_matrix[:, v_idx]
             # DSR uses the raw daily returns (not split-mean Sharpes) so it
-            # captures the per-period noise structure.
-            dsr_res = deflated_sharpe_ratio(v_returns, trial_sharpes)
+            # captures the per-period noise structure. trial_sharpes is
+            # per-period (scale-matched); effective_n_trials corrects for
+            # variant correlation.
+            dsr_res = deflated_sharpe_ratio(
+                v_returns, trial_sharpes, effective_n_trials=eff_n_trials,
+            )
             ci_res = stationary_bootstrap_sharpe_ci(
                 v_returns, n_boot=500, rng_seed=v_idx, periods_per_year=252,
             )
