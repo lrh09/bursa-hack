@@ -146,9 +146,29 @@ def main() -> None:
     ens_mf = ensemble_returns(mf_sleeves, pvol=0.20, ann=ANN)
     ens_mf_hi = ensemble_returns(mf_sleeves, pvol=0.30, ann=ANN)
 
+    # --- Crash-protection regime gate (Faber-style absolute trend) ---
+    # Equal-weight crypto index; when it's below its 100-day MA (bear), cut the
+    # whole book's exposure to `risk_off_mult`. Lagged (no lookahead). This is a
+    # standard tactical risk overlay, not a curve-fit to one crash.
+    idx = prices.mean(axis=1)
+    ma = idx.rolling(100).mean()
+    risk_on = (idx > ma)
+    for off in (0.30, 0.0):
+        mult = risk_on.shift(1).fillna(True).astype(float)
+        mult = mult * (1.0 - off) + off          # 1.0 risk-on, `off` risk-off
+        gated = (ens_mf_hi * mult.reindex(ens_mf_hi.index).fillna(1.0)).fillna(0.0)
+        # re-vol-target the gated stream back to 30% so we use the DD budget
+        from bursahack.futures.crypto_signals import _vol_target
+        gated = _vol_target(gated, 0.30, 63, ANN)
+        globals()[f"_gated_{int(off*100)}"] = gated
+
+    ens_gate30 = globals()["_gated_30"]   # bear exposure 30%
+    ens_gate0 = globals()["_gated_0"]     # bear exposure 0% (full cash)
+
     sleeves = {"trend (TS)": trend, "xs-momentum": xsmom, "xs-reversal": xsrev,
                "funding-carry": carry, "ENS mom 20%": ens, "ENS mom 30%": ens_hi,
-               "ENS+fund 20%": ens_mf, "ENS+fund 30%": ens_mf_hi}
+               "ENS+fund 20%": ens_mf, "ENS+fund 30%": ens_mf_hi,
+               "ENS+fund+gate30": ens_gate30, "ENS+fund+gate0": ens_gate0}
     sleeves = {k: v for k, v in sleeves.items() if len(v.dropna()) > 50}
 
     # --- Full history ---
@@ -181,9 +201,11 @@ def main() -> None:
     if len(carry):
         trial_streams += [ens_mf, ens_mf_hi]
     trial = np.array([sharpe_ratio(s.dropna().values) for s in trial_streams])
-    gate_ensembles = [("ENS mom 20%", ens), ("ENS mom 30%", ens_hi)]
+    gate_ensembles = [("ENS mom 30%", ens_hi)]
     if len(carry):
-        gate_ensembles += [("ENS+fund 20%", ens_mf), ("ENS+fund 30%", ens_mf_hi)]
+        gate_ensembles += [("ENS+fund 30%", ens_mf_hi),
+                           ("ENS+fund+gate30", ens_gate30),
+                           ("ENS+fund+gate0", ens_gate0)]
     for ens_name, ens_s in gate_ensembles:
         for tag, series in (("full", ens_s),
                             ("modern18", ens_s[ens_s.index >= MODERN_START]),
