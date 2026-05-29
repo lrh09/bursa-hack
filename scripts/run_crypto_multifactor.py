@@ -33,13 +33,57 @@ from bursahack.intraday.diagnostics import (  # noqa: E402
 )
 import yfinance as yf  # noqa: E402
 
+# ~35 liquid coins (selected by market-cap/liquidity, NOT backtest fit).
+# Wider cross-section strengthens xs-momentum's long-short spread. Newer coins
+# have short history; skipna handles it (they contribute once data exists).
 CRYPTO = ["BTC-USD", "ETH-USD", "BNB-USD", "XRP-USD", "ADA-USD", "SOL-USD",
           "DOGE-USD", "LTC-USD", "LINK-USD", "DOT-USD", "AVAX-USD", "MATIC-USD",
-          "BCH-USD"]
+          "BCH-USD", "TRX-USD", "XLM-USD", "ETC-USD", "ATOM-USD", "UNI-USD",
+          "FIL-USD", "NEAR-USD", "ALGO-USD", "VET-USD", "ICP-USD", "HBAR-USD",
+          "AAVE-USD", "GRT-USD", "SAND-USD", "MANA-USD", "AXS-USD", "EOS-USD",
+          "XTZ-USD", "THETA-USD", "FTM-USD", "EGLD-USD", "XMR-USD"]
 ANN = 365
 COST = 10.0
 BAR_CAGR, BAR_DD = 0.15, -0.40
 RECENT_START = pd.Timestamp("2022-01-01")
+
+
+def clean_panel(prices: pd.DataFrame, min_days: int = 365,
+                clip: float = 0.50) -> pd.DataFrame:
+    """Data hygiene: drop too-short series, winsorize daily returns, rebuild.
+
+    yfinance small-cap crypto has glitched ticks (near-zero prices) that make
+    pct_change explode (the +69809% artifact). Fix: (1) require >= min_days of
+    data; (2) clip daily returns to +-clip (a real >50% day is rare; clipping
+    is conservative and kills bad-tick blowups); (3) rebuild a clean price
+    series from the winsorized returns.
+    """
+    keep = [c for c in prices.columns if prices[c].notna().sum() >= min_days]
+    dropped = [c for c in prices.columns if c not in keep]
+    if dropped:
+        print(f"[clean] dropped {len(dropped)} coins (<{min_days}d history): "
+              f"{', '.join(dropped)}")
+    px = prices[keep]
+    ret = px.pct_change(fill_method=None).clip(-clip, clip)
+    # Rebuild price from clipped returns (preserves first valid price per coin).
+    rebuilt = {}
+    for c in keep:
+        r = ret[c].copy()
+        first_idx = px[c].first_valid_index()
+        if first_idx is None:
+            continue
+        r.loc[first_idx] = 0.0
+        rebuilt[c] = px[c].loc[first_idx] * (1.0 + r.loc[first_idx:]).cumprod()
+    out = pd.DataFrame(rebuilt).reindex(prices.index)
+    # Final guard: drop any coin whose rebuilt annualized vol is still absurd.
+    rr = out.pct_change(fill_method=None)
+    annvol = rr.std() * np.sqrt(ANN)
+    sane = [c for c in out.columns if annvol[c] < 3.0]   # <300% annual vol
+    insane = [c for c in out.columns if c not in sane]
+    if insane:
+        print(f"[clean] dropped {len(insane)} coins (>300% annual vol): "
+              f"{', '.join(insane)}")
+    return out[sane]
 
 
 def metrics_for(returns: pd.Series, label: str) -> dict:
@@ -64,9 +108,11 @@ def main() -> None:
     print("=" * 72)
     raw = yf.download(CRYPTO, period="max", interval="1d", progress=False, auto_adjust=False)
     prices = raw["Close"].copy().sort_index().dropna(how="all")
-    print(f"[fetch] {prices.shape[0]} rows x {prices.shape[1]} coins; "
+    print(f"[fetch] {prices.shape[0]} rows x {prices.shape[1]} coins raw")
+    prices = clean_panel(prices, min_days=365, clip=0.50)
+    print(f"[clean] {prices.shape[1]} coins survive hygiene; "
           f"{prices.index.min().date()} -> {prices.index.max().date()}\n")
-    costs = {t: COST for t in CRYPTO}
+    costs = {t: COST for t in prices.columns}
 
     # --- Build sleeves (each a daily return series) ---
     trend_cfg = TSMOMConfig(speeds=(21, 63, 252), signal_mode="sign",
@@ -78,9 +124,11 @@ def main() -> None:
     # (momentum market, not reversal) — kept in the per-sleeve table as evidence,
     # excluded from the blend.
     ens = ensemble_returns([trend, xsmom], pvol=0.20, ann=ANN)
+    # Higher-vol ensemble — uses the unused DD budget (bar allows -40%).
+    ens_hi = ensemble_returns([trend, xsmom], pvol=0.30, ann=ANN)
 
     sleeves = {"trend (TS)": trend, "xs-momentum": xsmom,
-               "xs-reversal": xsrev, "ENSEMBLE(tr+xs)": ens}
+               "xs-reversal": xsrev, "ENSEMBLE 20%": ens, "ENSEMBLE 30%": ens_hi}
 
     # --- Full history ---
     print("--- FULL HISTORY ---")
@@ -102,18 +150,19 @@ def main() -> None:
     for yr, v in ey.items():
         print(f"  {yr}: {v*100:>7.1f}%")
 
-    # --- Harness gate on the ensemble (full + recent) ---
-    print("\n--- HARNESS GATE (ensemble) ---")
+    # --- Harness gate on the ensembles (full + recent) ---
+    print("\n--- HARNESS GATE (ensembles) ---")
     trial = np.array([sharpe_ratio(s.dropna().values) for s in sleeves.values()])
-    for tag, series in (("full", ens), ("recent", ens[ens.index >= RECENT_START])):
-        v = series.dropna().values
-        dsr = deflated_sharpe_ratio(v, trial)
-        ci = stationary_bootstrap_sharpe_ci(v, n_boot=2000, rng_seed=0, periods_per_year=ANN)
-        m = metrics_for(series, "ens")
-        bar = m["cagr"] >= BAR_CAGR and m["max_drawdown"] >= BAR_DD
-        print(f"  [{tag:>6}] CAGR={m['cagr']*100:5.1f}%  maxDD={m['max_drawdown']*100:6.1f}%  "
-              f"DSR={dsr['dsr']:.3f}  bootCI=[{ci['lo']:.2f},{ci['hi']:.2f}]  "
-              f"BAR={'PASS' if bar else 'FAIL'}")
+    for ens_name, ens_s in (("ENS 20%", ens), ("ENS 30%", ens_hi)):
+        for tag, series in (("full", ens_s), ("recent", ens_s[ens_s.index >= RECENT_START])):
+            v = series.dropna().values
+            dsr = deflated_sharpe_ratio(v, trial)
+            ci = stationary_bootstrap_sharpe_ci(v, n_boot=2000, rng_seed=0, periods_per_year=ANN)
+            m = metrics_for(series, ens_name)
+            bar = m["cagr"] >= BAR_CAGR and m["max_drawdown"] >= BAR_DD
+            print(f"  {ens_name} [{tag:>6}] CAGR={m['cagr']*100:5.1f}%  maxDD={m['max_drawdown']*100:6.1f}%  "
+                  f"DSR={dsr['dsr']:.3f}  bootCI=[{ci['lo']:.2f},{ci['hi']:.2f}]  "
+                  f"BAR={'PASS' if bar else 'FAIL'}")
 
     # --- xs-momentum lookback/vol scan ON THE RECENT REGIME ---
     # Is ANY config able to clear 15%/40% in 2022-2026? (Guard: this is a
