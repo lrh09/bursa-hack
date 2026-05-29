@@ -85,8 +85,7 @@ from bursahack.intraday.diagnostics import (  # noqa: E402
 )
 from bursahack.intraday.impact import ImpactModel  # noqa: E402
 from bursahack.intraday.orchestrate import SweepOrchestrator  # noqa: E402
-from bursahack.intraday.signals.lmsw import LMSWParams  # noqa: F401, E402  (registers strategy)
-from bursahack.intraday.signals.orb import ORBParams  # noqa: F401, E402
+import bursahack.intraday.signals  # noqa: F401, E402  (registers all strategy families)
 from bursahack.intraday.sizing import FixedFractionalRiskSizer  # noqa: E402
 from bursahack.intraday.universe import Universe  # noqa: E402
 
@@ -97,17 +96,58 @@ from bursahack.intraday.universe import Universe  # noqa: E402
 
 ORB_VARIANTS = [
     {"opening_range_minutes": 5,  "stop_pct": 1.0, "exit_policy": "session_close", "side": "both",  "min_or_range_pct": 0.0},
+    {"opening_range_minutes": 5,  "stop_pct": 1.5, "exit_policy": "session_close", "side": "long",  "min_or_range_pct": 0.0},
     {"opening_range_minutes": 15, "stop_pct": 1.0, "exit_policy": "session_close", "side": "long",  "min_or_range_pct": 0.0},
     {"opening_range_minutes": 15, "stop_pct": 1.5, "exit_policy": "kl_15_00",      "side": "both",  "min_or_range_pct": 0.5},
+    {"opening_range_minutes": 15, "stop_pct": 2.0, "exit_policy": "session_close", "side": "both",  "min_or_range_pct": 0.0},
+    {"opening_range_minutes": 30, "stop_pct": 1.5, "exit_policy": "session_close", "side": "long",  "min_or_range_pct": 0.5},
     {"opening_range_minutes": 30, "stop_pct": 2.0, "exit_policy": "session_close", "side": "long",  "min_or_range_pct": 0.0},
 ]
 
 LMSW_VARIANTS = [
     {"z_window_bars": 60,  "volume_z_threshold": 3.0, "return_floor_pct": 0.10, "stop_pct": 1.0, "exit_policy": "session_close", "side_mode": "continuation"},
     {"z_window_bars": 60,  "volume_z_threshold": 4.0, "return_floor_pct": 0.20, "stop_pct": 1.0, "exit_policy": "session_close", "side_mode": "continuation"},
-    {"z_window_bars": 120, "volume_z_threshold": 3.0, "return_floor_pct": 0.10, "stop_pct": 1.5, "exit_policy": "kl_15_00",      "side_mode": "reversal"},
     {"z_window_bars": 60,  "volume_z_threshold": 3.0, "return_floor_pct": 0.10, "stop_pct": 1.0, "exit_policy": "session_close", "side_mode": "reversal"},
+    {"z_window_bars": 60,  "volume_z_threshold": 4.0, "return_floor_pct": 0.20, "stop_pct": 1.5, "exit_policy": "session_close", "side_mode": "reversal"},
+    {"z_window_bars": 120, "volume_z_threshold": 3.0, "return_floor_pct": 0.10, "stop_pct": 1.5, "exit_policy": "kl_15_00",      "side_mode": "reversal"},
+    {"z_window_bars": 120, "volume_z_threshold": 3.0, "return_floor_pct": 0.10, "stop_pct": 1.0, "exit_policy": "session_close", "side_mode": "continuation"},
+    {"z_window_bars": 20,  "volume_z_threshold": 3.0, "return_floor_pct": 0.10, "stop_pct": 1.0, "exit_policy": "session_close", "side_mode": "reversal"},
 ]
+
+VWAP_RECLAIM_VARIANTS = [
+    {"vwap_price": "close",   "min_below_minutes": 15, "stop_pct": 1.0, "exit_policy": "session_close", "side": "both"},
+    {"vwap_price": "close",   "min_below_minutes": 30, "stop_pct": 1.0, "exit_policy": "session_close", "side": "long"},
+    {"vwap_price": "close",   "min_below_minutes": 30, "stop_pct": 1.5, "exit_policy": "session_close", "side": "both"},
+    {"vwap_price": "typical", "min_below_minutes": 15, "stop_pct": 1.0, "exit_policy": "session_close", "side": "both"},
+    {"vwap_price": "typical", "min_below_minutes": 30, "stop_pct": 1.5, "exit_policy": "kl_15_00",      "side": "long"},
+    {"vwap_price": "close",   "min_below_minutes": 60, "stop_pct": 2.0, "exit_policy": "session_close", "side": "long"},
+]
+
+NR7_ORB_VARIANTS = [
+    {"nr_window": 7, "opening_range_minutes": 5,  "stop_pct": 1.0, "exit_policy": "session_close", "side": "both"},
+    {"nr_window": 7, "opening_range_minutes": 5,  "stop_pct": 1.5, "exit_policy": "session_close", "side": "long"},
+    {"nr_window": 7, "opening_range_minutes": 15, "stop_pct": 1.5, "exit_policy": "session_close", "side": "both"},
+    {"nr_window": 4, "opening_range_minutes": 5,  "stop_pct": 1.0, "exit_policy": "session_close", "side": "both"},
+    {"nr_window": 4, "opening_range_minutes": 15, "stop_pct": 2.0, "exit_policy": "kl_15_00",      "side": "long"},
+]
+
+GAP_CONTINUATION_VARIANTS = [
+    {"gap_z_threshold": 1.0, "vol_mult": 1.5, "or_minutes": 5,  "stop_pct": 1.0, "exit_policy": "session_close", "side": "both"},
+    {"gap_z_threshold": 1.5, "vol_mult": 2.0, "or_minutes": 5,  "stop_pct": 1.0, "exit_policy": "session_close", "side": "both"},
+    {"gap_z_threshold": 1.5, "vol_mult": 2.0, "or_minutes": 5,  "stop_pct": 1.5, "exit_policy": "session_close", "side": "long"},
+    {"gap_z_threshold": 2.0, "vol_mult": 3.0, "or_minutes": 5,  "stop_pct": 1.5, "exit_policy": "session_close", "side": "both"},
+    {"gap_z_threshold": 1.5, "vol_mult": 2.0, "or_minutes": 15, "stop_pct": 1.0, "exit_policy": "kl_15_00",      "side": "long"},
+    {"gap_z_threshold": 2.0, "vol_mult": 2.0, "or_minutes": 5,  "stop_pct": 2.0, "exit_policy": "session_close", "side": "long"},
+]
+
+# Strategy registry for the sweep: name -> variant list.
+FAMILIES: dict[str, list[dict]] = {
+    "orb": ORB_VARIANTS,
+    "lmsw": LMSW_VARIANTS,
+    "vwap_reclaim": VWAP_RECLAIM_VARIANTS,
+    "nr7_orb": NR7_ORB_VARIANTS,
+    "gap_continuation": GAP_CONTINUATION_VARIANTS,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -190,69 +230,44 @@ def main() -> None:
     n_folds = int(os.environ.get("SCORE_N_FOLDS", "8"))
     n_test_folds = int(os.environ.get("SCORE_N_TEST_FOLDS", "2"))
 
+    total_variants = sum(len(v) for v in FAMILIES.values())
     print(f"[config] window     : {start} -> {end}")
     print(f"[config] universe   : top_{top_n} by 60d ADV")
-    print(f"[config] variants   : {len(ORB_VARIANTS)} ORB + {len(LMSW_VARIANTS)} LMSW")
+    print(f"[config] families   : {', '.join(f'{k}({len(v)})' for k, v in FAMILIES.items())}")
+    print(f"[config] variants   : {total_variants} total")
     print(f"[config] n_jobs     : {n_jobs}")
-    print(f"[config] cpcv       : {n_folds} folds x {n_test_folds} test = {sum(1 for _ in range(1))} ...")
+    print(f"[config] cpcv       : {n_folds} folds x {n_test_folds} test")
 
     universe = Universe(top_n=top_n)
     cache = ResultCache(root=Path("data/intraday/_results_scorecard"))
 
-    # --- Run ORB ---
-    print(f"\n[orch] running ORB sweep ({len(ORB_VARIANTS)} variants) ...")
-    t_orb = time.perf_counter()
-    orb = SweepOrchestrator(
-        strategy_name="orb",
-        param_grid=_grid_from_variants(ORB_VARIANTS),
-        universe=universe,
-        fee_schedules=[MPlusRetailFee(), InstitutionalFee()],
-        impact_model=ImpactModel(),
-        sizer=FixedFractionalRiskSizer(risk_per_trade_pct=0.5),
-        cache=cache,
-        n_jobs=n_jobs,
-        start=start,
-        end=end,
-        allowed_param_tuples=[tuple(sorted(v.items())) for v in ORB_VARIANTS],
-    )
-    r_orb = orb.run(sweep_id="scorecard_orb")
-    print(f"[orch] ORB done in {time.perf_counter() - t_orb:.1f}s "
-          f"({r_orb.n_cache_hits} hits / {r_orb.n_cache_miss} miss)")
-
-    # --- Run LMSW ---
-    print(f"\n[orch] running LMSW sweep ({len(LMSW_VARIANTS)} variants) ...")
-    t_lmsw = time.perf_counter()
-    lmsw = SweepOrchestrator(
-        strategy_name="lmsw",
-        param_grid=_grid_from_variants(LMSW_VARIANTS),
-        universe=universe,
-        fee_schedules=[MPlusRetailFee(), InstitutionalFee()],
-        impact_model=ImpactModel(),
-        sizer=FixedFractionalRiskSizer(risk_per_trade_pct=0.5),
-        cache=cache,
-        n_jobs=n_jobs,
-        start=start,
-        end=end,
-        allowed_param_tuples=[tuple(sorted(v.items())) for v in LMSW_VARIANTS],
-    )
-    r_lmsw = lmsw.run(sweep_id="scorecard_lmsw")
-    print(f"[orch] LMSW done in {time.perf_counter() - t_lmsw:.1f}s "
-          f"({r_lmsw.n_cache_hits} hits / {r_lmsw.n_cache_miss} miss)")
-
-    # --- Gather variant cache keys + names ---
+    # --- Run every family through the orchestrator, gather variant meta ---
     variant_meta: list[dict] = []
-    for vid, params in orb.enumerate_variants():
-        ck = next(o.cache_key for o in r_orb.outcomes if o.variant_id == vid)
-        variant_meta.append({
-            "family": "orb", "variant_id": vid, "cache_key": ck,
-            "params": params.model_dump(),
-        })
-    for vid, params in lmsw.enumerate_variants():
-        ck = next(o.cache_key for o in r_lmsw.outcomes if o.variant_id == vid)
-        variant_meta.append({
-            "family": "lmsw", "variant_id": vid, "cache_key": ck,
-            "params": params.model_dump(),
-        })
+    for fam_name, fam_variants in FAMILIES.items():
+        print(f"\n[orch] running {fam_name} sweep ({len(fam_variants)} variants) ...")
+        t0 = time.perf_counter()
+        orch = SweepOrchestrator(
+            strategy_name=fam_name,
+            param_grid=_grid_from_variants(fam_variants),
+            universe=universe,
+            fee_schedules=[MPlusRetailFee(), InstitutionalFee()],
+            impact_model=ImpactModel(),
+            sizer=FixedFractionalRiskSizer(risk_per_trade_pct=0.5),
+            cache=cache,
+            n_jobs=n_jobs,
+            start=start,
+            end=end,
+            allowed_param_tuples=[tuple(sorted(v.items())) for v in fam_variants],
+        )
+        res = orch.run(sweep_id=f"scorecard_{fam_name}")
+        print(f"[orch] {fam_name} done in {time.perf_counter() - t0:.1f}s "
+              f"({res.n_cache_hits} hits / {res.n_cache_miss} miss)")
+        for vid, params in orch.enumerate_variants():
+            ck = next(o.cache_key for o in res.outcomes if o.variant_id == vid)
+            variant_meta.append({
+                "family": fam_name, "variant_id": vid, "cache_key": ck,
+                "params": params.model_dump(),
+            })
 
     # --- Build daily PnL per variant per regime ---
     regimes = ["mplus_retail", "institutional"]
@@ -375,7 +390,7 @@ def main() -> None:
     md.append("")
     md.append(f"- Window: **{start} → {end}**  ({scorecard['per_regime'].get('mplus_retail', {}).get('n_trading_days', '?')} trading days)")
     md.append(f"- Universe: top-{top_n} by 60d ADV")
-    md.append(f"- Variants: {len(ORB_VARIANTS)} ORB + {len(LMSW_VARIANTS)} LMSW")
+    md.append(f"- Families: {', '.join(f'{k} ({len(v)})' for k, v in FAMILIES.items())}")
     md.append(f"- CPCV: {n_folds} folds × {n_test_folds} test = "
               f"{scorecard['per_regime'].get('mplus_retail', {}).get('n_splits', '?')} splits")
     md.append("")
