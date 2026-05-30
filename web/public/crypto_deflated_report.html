@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crypto Trend — Honest Deflated Backtest</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --bd:#30363d; --tx:#c9d1d9; --mut:#8b949e;
+          --good:#3fb950; --warn:#d29922; --bad:#f85149; --acc:#58a6ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--tx); font:15px/1.6 -apple-system,
+         BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:880px; margin:0 auto; padding:32px 20px 80px; }
+  h1 { font-size:26px; margin:0 0 4px; }
+  h2 { font-size:18px; margin:34px 0 12px; border-bottom:1px solid var(--bd); padding-bottom:6px; }
+  .sub { color:var(--mut); margin:0 0 24px; }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:10px;
+          padding:18px 20px; margin:16px 0; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .kpi { background:var(--card); border:1px solid var(--bd); border-radius:10px; padding:14px 16px; }
+  .kpi .v { font-size:24px; font-weight:700; }
+  .kpi .l { color:var(--mut); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  .good{color:var(--good)} .warn{color:var(--warn)} .bad{color:var(--bad)} .acc{color:var(--acc)}
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
+  th,td { text-align:right; padding:6px 10px; border-bottom:1px solid var(--bd); }
+  th:first-child,td:first-child { text-align:left; font-family:ui-monospace,monospace; }
+  th { color:var(--mut); font-weight:600; }
+  code { background:#21262d; padding:1px 6px; border-radius:5px; font-size:13px; }
+  ul { padding-left:20px; } li { margin:6px 0; }
+  .caveat { border-left:3px solid var(--warn); }
+  .foot { color:var(--mut); font-size:12px; margin-top:40px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Crypto Trend — Honest, Deflated, Rule-Based Backtest</h1>
+  <p class="sub">Generated 2026-05-29 · yfinance daily spot · 2018-01-01 → 2026-05-29</p>
+
+  <div class="card">
+    <strong>Method — built to avoid data-mining, not to flatter:</strong>
+    <ul>
+      <li><strong>Universe:</strong> point-in-time top-K by trailing dollar-volume — a <em>rule</em>, no survivorship, no hand-picked coin list.</li>
+      <li><strong>Window:</strong> the full 2018+ history (a multi-regime cycle: 2018 bear, 2020-21 bull, 2022 crash, 2023-25), not a cherry-picked slice.</li>
+      <li><strong>Deflation:</strong> Deflated Sharpe Ratio computed over the <em>entire</em> 36-config parameter grid that was searched — plus PBO and CPCV out-of-sample.</li>
+    </ul>
+    Strategy: multi-speed time-series trend blended with cross-sectional momentum, optional absolute-trend (Faber) crash gate. Vol-targeted. All positions lagged one day (no look-ahead).
+  </div>
+
+  <h2>Headline (best config after deflation)</h2>
+  <div class="kpis">
+    <div class="kpi"><div class="v good">21.7%</div><div class="l">CAGR</div></div>
+    <div class="kpi"><div class="v good">−26.1%</div><div class="l">Max Drawdown</div></div>
+    <div class="kpi"><div class="v">0.97</div><div class="l">Raw Sharpe</div></div>
+    <div class="kpi"><div class="v warn">0.899</div><div class="l">Deflated Sharpe (DSR)</div></div>
+    <div class="kpi"><div class="v good">0.36</div><div class="l">PBO (overfit prob)</div></div>
+    <div class="kpi"><div class="v good">27/28</div><div class="l">CPCV folds positive</div></div>
+  </div>
+  <p>Best config: <code>med-trend / xs-30d / top-40 / crash-gate</code> — rule-defined, not curated.
+     Bootstrap Sharpe 95% CI <strong class="good">[+0.22, +1.69]</strong>.
+     Per-year 2019-2025 all positive (2022 crash +3%); 2026-YTD −3%.</p>
+
+  <h2>The honest read</h2>
+  <div class="card">
+    Removing the two data-mining shortcuts (a curated coin list and a hindsight window) and deflating over the full grid <strong>lowered</strong> the result — raw Sharpe fell 1.43 → 0.97, DSR 1.00 → 0.899. <strong>That drop is the honesty.</strong> It still clears a 15%-CAGR / 40%-drawdown bar, with a low overfit probability (PBO 0.36) and 27 of 28 out-of-sample folds positive — strong supporting evidence. The strict "DSR &gt; 0.95" threshold is <em>not</em> quite met (0.899), so the fair verdict is: <strong>robustly likely real, not certified-strong.</strong>
+  </div>
+
+  <h2>Full grid (top 12 of 36, by Sharpe)</h2>
+  <table>
+    <tr><th>config</th><th>CAGR</th><th>maxDD</th><th>Sharpe</th><th>Calmar</th></tr>
+    <tr><td>med/xs30/K40/gate</td><td>21.7%</td><td>−26.1%</td><td>0.97</td><td>0.83</td></tr>
+    <tr><td>combo/xs30/K40/gate</td><td>16.4%</td><td>−24.0%</td><td>0.94</td><td>0.68</td></tr>
+    <tr><td>combo/xs30/K25/gate</td><td>15.9%</td><td>−23.4%</td><td>0.94</td><td>0.68</td></tr>
+    <tr><td>med/xs30/K25/gate</td><td>20.7%</td><td>−26.7%</td><td>0.93</td><td>0.78</td></tr>
+    <tr><td>med/xs90/K40/gate</td><td>18.8%</td><td>−25.5%</td><td>0.87</td><td>0.74</td></tr>
+    <tr><td>med/xs90/K25/gate</td><td>18.3%</td><td>−24.1%</td><td>0.86</td><td>0.76</td></tr>
+    <tr><td>combo/xs90/K25/gate</td><td>13.4%</td><td>−21.7%</td><td>0.84</td><td>0.61</td></tr>
+    <tr><td>combo/xs90/K40/gate</td><td>13.5%</td><td>−23.4%</td><td>0.83</td><td>0.58</td></tr>
+    <tr><td>combo/xs30/K15/gate</td><td>13.9%</td><td>−26.2%</td><td>0.82</td><td>0.53</td></tr>
+    <tr><td>med/xs30/K15/gate</td><td>17.8%</td><td>−32.3%</td><td>0.81</td><td>0.55</td></tr>
+    <tr><td>med/xs90/K15/gate</td><td>16.8%</td><td>−28.5%</td><td>0.79</td><td>0.59</td></tr>
+    <tr><td>med/xs30/K40/nogate</td><td>16.6%</td><td>−40.0%</td><td>0.67</td><td>0.42</td></tr>
+  </table>
+  <p class="sub">Note: the <code>gate</code> (crash protection) and broader <code>K</code> dominate the top; <code>slow</code>-only trend sits at the bottom (deep −50-65% drawdowns). The edge is in faster/medium trend + cross-sectional breadth + the crash gate.</p>
+
+  <h2>Honest caveats</h2>
+  <div class="card caveat">
+    <ul>
+      <li>A backtest is derived from the same data it is measured on. <strong>Only forward paper-trading is a true out-of-sample test.</strong></li>
+      <li>~10 years of history dominated by the 2020-21 bull; crypto drawdowns are deep and the asset class is young.</li>
+      <li>Shorting requires perpetual futures or CME crypto futures (MBT/MET) — not spot. Funding/borrow costs are not fully modelled.</li>
+      <li>Deflation covers this 36-config grid; the broader human search across the wider project is not fully captured, so the true multiple-testing penalty is somewhat larger.</li>
+      <li>Not investment advice. Research artifact only.</li>
+    </ul>
+  </div>
+
+  <p class="foot">Reproducible: <code>scripts/run_crypto_deflated.py</code>. Built on an asset-agnostic
+     statistical harness (CPCV · Deflated Sharpe · PBO · stationary bootstrap).</p>
+</div>
+</body>
+</html>
