@@ -26,6 +26,10 @@ const TITLES: Record<string, { title: string; blurb: string }> = {
     title: "Deployment framework v1.0",
     blurb: "The 12 gates and 6 kill triggers that gate live deployment.",
   },
+  CRYPTO_DEFLATED: {
+    title: "Crypto trend — honest deflated backtest",
+    blurb: "Rule-based point-in-time universe + full 2018+ window + Deflated Sharpe over the full 36-config grid. The honest version of the crypto strategy: 21.7% CAGR, −26% DD, DSR 0.899, PBO 0.36, 27/28 OOS folds positive.",
+  },
 };
 
 export default async function ReportsPage() {
