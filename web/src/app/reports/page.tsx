@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText, Download } from "lucide-react";
+import { FileText, Download, LineChart } from "lucide-react";
 
 import { listReports } from "@/lib/data";
 import { Card, CardContent } from "@/components/ui/card";
@@ -72,6 +72,31 @@ export default async function ReportsPage() {
             </Card>
           );
         })}
+        <Card>
+          <CardContent className="py-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="size-10 rounded-md flex items-center justify-center bg-[var(--color-brand-navy)] text-[var(--color-brand-gold)]">
+                <LineChart className="size-4" aria-hidden />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="font-heading text-lg leading-tight">Options analytics tearsheet</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Desk-grade options-book analysis (TSLA live book): greeks, IV/vol,
+                  probability + Monte-Carlo, scenario surfaces, margin &amp; liquidation, and
+                  combination/decision ranking. Self-contained interactive HTML.
+                </p>
+              </div>
+            </div>
+            <a
+              href="/tsla_book_2026-06-18_options_report.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-[var(--color-brand-gold-700)] hover:text-[var(--color-brand-gold)]"
+            >
+              Open tearsheet →
+            </a>
+          </CardContent>
+        </Card>
         <Card>
           <CardContent className="py-5 space-y-3">
             <div className="flex items-start gap-3">

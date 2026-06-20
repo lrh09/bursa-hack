@@ -1201,8 +1201,17 @@ def scenario_tornado(book: "Book", scenarios: Any = None, market_by_name: dict |
     ax.set_yticks(y)
     ax.set_yticklabels(labels)
     ax.axvline(0, color=_PALETTE["muted"], lw=0.9)
+    # Give both sides ~28% headroom beyond the largest bar so the value labels sit
+    # in clear margin between the bar tip and the spine -- the negative-side label
+    # no longer collides with the y-tick labels at the left edge (cosmetic fix).
+    xmax = max((abs(v) for v in vals), default=1.0) or 1.0
+    pad = xmax * 0.03
+    ax.set_xlim(-xmax * 1.28, xmax * 1.28)
     for yi, v in zip(y, vals):
-        ax.text(v, yi, f" {_money(v)}", va="center", ha="left" if v >= 0 else "right", fontsize=8, color=_PALETTE["text"])
+        if v >= 0:
+            ax.text(v + pad, yi, _money(v), va="center", ha="left", fontsize=8, color=_PALETTE["text"])
+        else:
+            ax.text(v - pad, yi, _money(v), va="center", ha="right", fontsize=8, color=_PALETTE["text"])
 
     # Axis honesty: a supplied {label: mark_value_change} dict is the change in the
     # book's mark value versus the unshocked spot (the CLI passes real MTM scenario
