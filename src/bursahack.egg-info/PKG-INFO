@@ -9,6 +9,13 @@ Requires-Dist: numpy>=1.26
 Requires-Dist: matplotlib>=3.10.9
 Requires-Dist: reportlab>=4.5.1
 Requires-Dist: pymupdf>=1.27.2.3
+Requires-Dist: polars>=1.40
+Requires-Dist: duckdb>=1.5
+Requires-Dist: exchange_calendars>=4.5
+Requires-Dist: pydantic>=2.7
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: vectorbt<1.0,>=0.27
+Requires-Dist: joblib>=1.4
 Provides-Extra: notebook
 Requires-Dist: jupyter; extra == "notebook"
 Requires-Dist: matplotlib; extra == "notebook"
@@ -16,3 +23,5 @@ Requires-Dist: seaborn; extra == "notebook"
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
 Requires-Dist: ruff; extra == "dev"
+Provides-Extra: research
+Requires-Dist: yfinance>=0.2; extra == "research"

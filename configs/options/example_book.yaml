@@ -1,0 +1,51 @@
+# Generic example book — a single defined-risk iron condor on a placeholder
+# ticker. Proves the toolkit is NOT TSLA-specific: any US-listed underlying,
+# arbitrary strikes/expiries, full pipeline end-to-end.
+#
+# An iron condor is the canonical "two breakevens, disjoint profit regions,
+# defined risk both sides" structure (locks prob/structure multi-BE goldens).
+#
+# Schema is the §4 book schema. `right` is the enum VALUE (C/P/S/X). qty is
+# SIGNED: +long / -short. entry_price is the per-share fill premium magnitude.
+
+asof: 2026-06-18T16:00:00-04:00
+
+defaults:
+  r: 0.045
+  q: 0.0
+  multiplier: 100
+  currency: USD
+
+account:
+  tax_status: nra
+  residence: MY
+  broker: IBKR
+  account_type: reg_t_margin
+  cash: 25000
+  netliq: 25000
+
+underlyings:
+  - symbol: ACME
+    spot: 100.00
+    sigma: 0.30           # flat fallback IV (MarketState.sigma)
+    beta: 1.0             # to SPY
+    hv_series_ref: null
+
+scenarios:
+  spots_pct: [-0.20, -0.10, -0.05, 0, 0.05, 0.10, 0.20]
+  iv_shifts: [-10, -5, 0, 5, 10]
+  days: [0, 7, 30]
+
+structures:
+  # Iron condor: short the 90P/110C body, long the 85P/115C wings.
+  #   sell 90 put  / buy 85 put   (put credit spread, lower defined-risk side)
+  #   sell 110 call / buy 115 call (call credit spread, upper defined-risk side)
+  - name: ACME iron condor 85/90/110/115
+    type: iron_condor
+    legs:
+      - { symbol: ACME, right: P, strike:  85, expiry: 2026-09-18, qty:   1, entry_price: 0.55 }
+      - { symbol: ACME, right: P, strike:  90, expiry: 2026-09-18, qty:  -1, entry_price: 1.20 }
+      - { symbol: ACME, right: C, strike: 110, expiry: 2026-09-18, qty:  -1, entry_price: 1.35 }
+      - { symbol: ACME, right: C, strike: 115, expiry: 2026-09-18, qty:   1, entry_price: 0.60 }
+
+catalysts: []

@@ -1,0 +1,107 @@
+# RH's real TSLA options book — snapshot 2026-06-18 (NRA / Malaysia / IBKR / portfolio margin).
+#
+# This is the canonical demo book: `bookio.TSLA_DEMO_YAML` mirrors the bull-call
+# 360/460 x8 worked example; THIS file is the full live position the toolkit was
+# born to analyse end-to-end. Spot/sigma pinned to market state MS_A
+# (S=389.80, sigma=0.46) so the per-leg pricing reconciles against the §7 goldens.
+#
+# Schema is the §4 book schema. `right` is the enum VALUE (C/P/S/X); load_book
+# does Right(row["right"]). qty is SIGNED: +long / -short. entry_price is the
+# per-share fill premium magnitude (sign of the cash flow comes from qty).
+#
+# NetLiq / ExcessLiquidity are the broker-reported figures — Account.netliq is the
+# ONE source for NLV across book/margin (do not recompute). ExcessLiquidity here is
+# the real IBKR portfolio-margin cushion; the toolkit's stress-grid maintenance is a
+# model estimate reported alongside it, not a replacement.
+
+asof: 2026-06-18T16:00:00-04:00
+
+defaults:
+  r: 0.045
+  q: 0.0
+  multiplier: 100
+  currency: USD
+
+account:
+  tax_status: nra          # RH is a non-resident alien (Malaysia)
+  residence: MY
+  broker: IBKR
+  account_type: portfolio_margin
+  cash: 0
+  netliq: 525898           # broker-reported NLV (USD) — authoritative
+  excess_liquidity: 84000  # broker-reported PM cushion (USD) — context vs model
+
+underlyings:
+  - symbol: TSLA
+    spot: 389.80           # MS_A
+    sigma: 0.46            # MS_A flat fallback IV (MarketState.sigma)
+    beta: 1.8              # to SPY
+    hv_series_ref: null
+
+scenarios:
+  spots_pct: [-0.20, -0.10, -0.05, 0, 0.05, 0.10, 0.20]
+  iv_shifts: [-10, -5, 0, 5, 10]
+  days: [0, 7, 30]
+
+structures:
+  # --- Long outright calls ----------------------------------------------------
+  - name: TSLA 220C Sep26 x10 (long)
+    legs:
+      - { symbol: TSLA, right: C, strike: 220, expiry: 2026-09-18, qty:  10, entry_price: 0.0 }
+
+  - name: TSLA 380C Jun27 x10 (long)
+    legs:
+      - { symbol: TSLA, right: C, strike: 380, expiry: 2027-06-18, qty:  10, entry_price: 0.0 }
+
+  # --- Bull call spreads ------------------------------------------------------
+  - name: TSLA bull call 300/650 Jan27 x5
+    type: bull_call_spread
+    legs:
+      - { symbol: TSLA, right: C, strike: 300, expiry: 2027-01-15, qty:   5, entry_price: 0.0 }
+      - { symbol: TSLA, right: C, strike: 650, expiry: 2027-01-15, qty:  -5, entry_price: 0.0 }
+
+  - name: TSLA bull call 240/540 Sep26 x2
+    type: bull_call_spread
+    legs:
+      - { symbol: TSLA, right: C, strike: 240, expiry: 2026-09-18, qty:   2, entry_price: 0.0 }
+      - { symbol: TSLA, right: C, strike: 540, expiry: 2026-09-18, qty:  -2, entry_price: 0.0 }
+
+  - name: TSLA bull call 400/500 Jun27 x5
+    type: bull_call_spread
+    legs:
+      - { symbol: TSLA, right: C, strike: 400, expiry: 2027-06-18, qty:   5, entry_price: 0.0 }
+      - { symbol: TSLA, right: C, strike: 500, expiry: 2027-06-18, qty:  -5, entry_price: 0.0 }
+
+  # --- Synthetic / combo structures (risk-reversal + short OTM call wing) ------
+  # Jan27: long 470 synthetic (+470C -470P), short 600C wing, long 380P floor. x9.
+  - name: TSLA combo Jan27 +470C -470P -600C +380P x9
+    legs:
+      - { symbol: TSLA, right: C, strike: 470, expiry: 2027-01-15, qty:   9, entry_price: 0.0 }
+      - { symbol: TSLA, right: P, strike: 470, expiry: 2027-01-15, qty:  -9, entry_price: 0.0 }
+      - { symbol: TSLA, right: C, strike: 600, expiry: 2027-01-15, qty:  -9, entry_price: 0.0 }
+      - { symbol: TSLA, right: P, strike: 380, expiry: 2027-01-15, qty:   9, entry_price: 0.0 }
+
+  # Sep26: long 360 synthetic (+360C -360P), short 500C wing, long 300P floor. x2.
+  - name: TSLA combo Sep26 +360C -360P -500C +300P x2
+    legs:
+      - { symbol: TSLA, right: C, strike: 360, expiry: 2026-09-18, qty:   2, entry_price: 0.0 }
+      - { symbol: TSLA, right: P, strike: 360, expiry: 2026-09-18, qty:  -2, entry_price: 0.0 }
+      - { symbol: TSLA, right: C, strike: 500, expiry: 2026-09-18, qty:  -2, entry_price: 0.0 }
+      - { symbol: TSLA, right: P, strike: 300, expiry: 2026-09-18, qty:   2, entry_price: 0.0 }
+
+  # --- Short outright calls (premium / income legs) ---------------------------
+  - name: TSLA short 460C Aug26 x10
+    type: short_call
+    legs:
+      - { symbol: TSLA, right: C, strike: 460, expiry: 2026-08-21, qty: -10, entry_price: 0.0 }
+
+  - name: TSLA short 650C Jan27 x3
+    type: short_call
+    legs:
+      - { symbol: TSLA, right: C, strike: 650, expiry: 2027-01-15, qty:  -3, entry_price: 0.0 }
+
+catalysts:
+  # Q2 2026 earnings: research points to 2026-07-29 after the close (the prior
+  # 2026-07-23 entry was an unconfirmed placeholder). Still confirmed:false until
+  # TSLA officially announces the date.
+  - { date: 2026-07-29, label: TSLA Q2 earnings (after close), confirmed: false }
