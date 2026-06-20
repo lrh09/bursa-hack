@@ -33,3 +33,10 @@ web/.next/
 data/parquet/
 data/raw/
 stock_prices_xkls_all_file-1.csv
+
+# Big LOCAL-ONLY artifacts not needed by the Dockerfile build (it COPYs results/, not data/).
+# Required so `railway up --no-gitignore` (which includes the gitignored results/) stays
+# under the upload cap instead of shipping the 2.4G data/ + 300M intraday dir.
+data/
+Historical_1m_*/
+.git/
